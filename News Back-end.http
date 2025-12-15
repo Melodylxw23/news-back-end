@@ -1,6 +1,24 @@
-@News_Back_end_HostAddress = http://localhost:5216
+@News Back-end_HostAddress = https://localhost:7191
 
 GET {{News_Back_end_HostAddress}}/weatherforecast/
 Accept: application/json
+
+###
+
+POST {{News Back-end_HostAddress}}/api/usercontrollers/login
+Content-Type: application/json
+
+{
+  //LoginUserDTOs
+}
+
+###
+
+POST {{News Back-end_HostAddress}}/api/usercontrollers/register
+Content-Type: application/json
+
+{
+  //RegisterUserDTO
+}
 
 ###
