@@ -26,13 +26,15 @@ namespace News_Back_end.Controllers
         private readonly RoleManager<IdentityRole> _roleManager;
         private readonly Services.IEmailSender _emailSender;
         private readonly IWebHostEnvironment _env;
+        private readonly SymmetricSecurityKey _signingKey;
 
         public UserControllers(MyDBContext context, IConfiguration config,
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager, 
             RoleManager<IdentityRole> roleManager,
             Services.IEmailSender emailSender,
-            IWebHostEnvironment env)
+            IWebHostEnvironment env,
+            SymmetricSecurityKey signingKey)
         {
             _context = context;
             _config = config;
@@ -41,6 +43,7 @@ namespace News_Back_end.Controllers
             _roleManager = roleManager;
             _emailSender = emailSender;
             _env = env;
+            _signingKey = signingKey;
         }
 
         // --------------------- REGISTER ------------------------------
@@ -113,7 +116,6 @@ namespace News_Back_end.Controllers
             await _userManager.UpdateAsync(user);
 
             // Create JWT token for authenticated user
-            var jwtKey = _config["Jwt:Key"] ?? "VerySecretDefaultKey12345";
             var jwtIssuer = _config["Jwt:Issuer"] ?? "NewsBackEnd";
             var jwtAudience = _config["Jwt:Audience"] ?? "NewsBackEndAudience";
 
@@ -127,8 +129,7 @@ namespace News_Back_end.Controllers
             foreach (var r in roles)
                 claims.Add(new Claim(ClaimTypes.Role, r));
 
-            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var creds = new SigningCredentials(_signingKey, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
                 issuer: jwtIssuer,
@@ -290,5 +291,127 @@ namespace News_Back_end.Controllers
         }
 
         // Identity handles password hashing and verification
+
+
+        // --------------------- REGISTER MEMBER (creates Identity user + Member profile) ------------------------------
+        [HttpPost("register-member")]
+        public async Task<IActionResult> RegisterMember(MemberDTOs dto)
+        {
+            if (dto.Password != dto.ConfirmPassword)
+                return BadRequest("Password and Confirm Password do not match.");
+
+            if (await _userManager.FindByEmailAsync(dto.Email) != null)
+                return BadRequest("Email is already registered.");
+
+            var appUser = new ApplicationUser
+            {
+                UserName = dto.Email,
+                Email = dto.Email,
+                Name = dto.ContactPerson,
+                WeChatWorkId = dto.WeChatWorkId,
+                IsActive = true,
+                Lastlogin = DateTime.UtcNow
+            };
+
+            var res = await _userManager.CreateAsync(appUser, dto.Password);
+            if (!res.Succeeded)
+                return BadRequest(res.Errors);
+
+            // assign Member role
+            if (!await _roleManager.RoleExistsAsync("Member"))
+                await _roleManager.CreateAsync(new IdentityRole("Member"));
+
+            await _userManager.AddToRoleAsync(appUser, "Member");
+
+            // create member profile
+            var member = new Member
+            {
+                CompanyName = dto.CompanyName,
+                ContactPerson = dto.ContactPerson,
+                Email = dto.Email,
+                WeChatWorkId = dto.WeChatWorkId,
+                Country = dto.Country,
+                PreferredLanguage = dto.PreferredLanguage,
+                PreferredChannel = dto.PreferredChannel,
+                MembershipType = dto.MembershipType,
+                ApplicationUserId = appUser.Id,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Members.Add(member);
+            await _context.SaveChangesAsync();
+
+            return Ok("Member registered successfully.");
+        }
+
+        // --------------------- LINK EXISTING MEMBER TO APPLICATIONUSER ------------------------------
+        [HttpPost("link-member")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> LinkMemberToUser([FromBody] LinkMemberDTO dto)
+        {
+            var member = await _context.Members.FirstOrDefaultAsync(m => m.MemberId == dto.MemberId);
+            if (member == null)
+                return NotFound("Member not found.");
+
+            var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null)
+                return NotFound("User not found.");
+
+            member.ApplicationUserId = user.Id;
+            await _context.SaveChangesAsync();
+
+            // ensure Member role
+            if (!await _roleManager.RoleExistsAsync("Member"))
+                await _roleManager.CreateAsync(new IdentityRole("Member"));
+            await _userManager.AddToRoleAsync(user, "Member");
+
+            return Ok("Linked member to user.");
+        }
+
+        // --------------------- GET CURRENT USER PROFILE & ROLES (for testing) ------------------------------
+        [HttpGet("me")]
+        [Authorize]
+        public async Task<IActionResult> GetCurrentUserProfile()
+        {
+            var email = User?.Identity?.Name;
+            if (string.IsNullOrEmpty(email))
+                return Unauthorized();
+
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+                return Unauthorized();
+
+            var roles = await _userManager.GetRolesAsync(user);
+
+            var member = await _context.Members
+                .Where(m => m.ApplicationUserId == user.Id)
+                .Select(m => new
+                {
+                    m.MemberId,
+                    m.CompanyName,
+                    m.ContactPerson,
+                    m.Email,
+                    m.WeChatWorkId,
+                    m.Country,
+                    m.PreferredLanguage,
+                    m.PreferredChannel,
+                    m.MembershipType,
+                    m.CreatedAt
+                })
+                .FirstOrDefaultAsync();
+
+            return Ok(new
+            {
+                user.Id,
+                user.Email,
+                user.UserName,
+                user.Name,
+                user.WeChatWorkId,
+                user.IsActive,
+                user.Lastlogin,
+                Roles = roles,
+                Member = member
+            });
+        }
     }
 }

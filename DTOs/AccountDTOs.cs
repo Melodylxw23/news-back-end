@@ -34,8 +34,11 @@ namespace News_Back_end.DTOs
         [Required]
         [DataType(DataType.Password)]
         public string Password { get; set; }
-        [Required]
-        public string SecretCode { get; set; }
+        /// <summary>
+        /// Optional secret code used only when logging in as Admin or Consultant.
+        /// Members may omit this value.
+        /// </summary>
+        public string? SecretCode { get; set; }
     }
 
     public class UpdateUserDTO

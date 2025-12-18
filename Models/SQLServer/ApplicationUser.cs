@@ -8,5 +8,7 @@ namespace News_Back_end.Models.SQLServer
         public string? WeChatWorkId { get; set; }
         public bool IsActive { get; set; } = true;
         public DateTime? Lastlogin { get; set; }
+        // One-to-one profile relation to Member
+        public Member? Member { get; set; }
     }
 }

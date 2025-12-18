@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.Collections.Generic;
 
 namespace News_Back_end.Models.SQLServer
 {
@@ -6,16 +7,6 @@ namespace News_Back_end.Models.SQLServer
     { 
         Singapore,
         China
-    }
-    public enum IndustryTags
-    { 
-        Finance,
-        Technology,
-        Healthcare,
-        Education,
-        Retail,
-        Manufacturing,
-        Other
     }
     public enum Language
     {
@@ -30,10 +21,24 @@ namespace News_Back_end.Models.SQLServer
         Email,
         Both
     }
-    public enum Type
+    public enum Types
     {
         Local, 
         Overseas
+    }
+
+    public class IndustryTag
+    {
+        public int IndustryTagId { get; set; }
+        public string Name { get; set; } = null!;
+        public ICollection<Member> Members { get; set; } = new List<Member>();
+    }
+
+    public class InterestTag
+    {
+        public int InterestTagId { get; set; }
+        public string Name { get; set; } = null!;
+        public ICollection<Member> Members { get; set; } = new List<Member>();
     }
 
     public class Member
@@ -43,17 +48,24 @@ namespace News_Back_end.Models.SQLServer
         public string CompanyName { get; set; }
         [Required, MaxLength(50)]
         public string ContactPerson { get; set; }
+        
         [Required]
         [DataType(DataType.EmailAddress)]
         public string Email { get; set; }
         public string? WeChatWorkId { get; set; }
         [Required]
         public Countries Country { get; set; }
-        public IndustryTags IndustryTag { get; set; }
+        // normalized many-to-many
+        public ICollection<IndustryTag> IndustryTags { get; set; } = new List<IndustryTag>();
+        public ICollection<InterestTag> Interests { get; set; } = new List<InterestTag>();
         public Language PreferredLanguage { get; set; }
         public Channels PreferredChannel { get; set; }
-        public Type MembershipType { get; set; }
+        public Types MembershipType { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+        // link to Identity user if this member can sign in
+        public string? ApplicationUserId { get; set; }
+        public ApplicationUser? ApplicationUser { get; set; }
 
     }
 }

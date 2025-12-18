@@ -4,13 +4,39 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Security.Cryptography;
+using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
+// Configure controllers to serialize/deserialize enums as strings for readability
+builder.Services.AddControllers()
+    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer <token>'",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
+            },
+            new string[] { }
+        }
+    });
+});
 
 // Register EF Core DbContext for SQL Server
 builder.Services.AddDbContext<MyDBContext>(options =>
@@ -43,8 +69,60 @@ builder.Services.AddIdentity<News_Back_end.Models.SQLServer.ApplicationUser, Ide
     .AddEntityFrameworkStores<MyDBContext>()
     .AddDefaultTokenProviders();
 
-// JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "VerySecretDefaultKey12345";
+// JWT Authentication: require a base64-encoded symmetric key in configuration and validate length (>256 bits)
+var jwtKeyBase64 = builder.Configuration["Jwt:KeyBase64"];
+byte[] jwtKeyBytes = null;
+
+bool isDev = builder.Environment.IsDevelopment();
+
+if (string.IsNullOrWhiteSpace(jwtKeyBase64))
+{
+    if (!isDev)
+        throw new Exception("Missing configuration: Jwt:KeyBase64 (base64-encoded symmetric key is required).");
+
+    // In Development auto-generate a sufficiently strong key and warn the developer
+    jwtKeyBytes = new byte[48]; // 48 bytes = 384 bits
+    RandomNumberGenerator.Fill(jwtKeyBytes);
+    jwtKeyBase64 = Convert.ToBase64String(jwtKeyBytes);
+    Console.WriteLine("[Development] Generated Jwt:KeyBase64 (store this securely if you need reproducible tokens): " + jwtKeyBase64);
+}
+
+if (jwtKeyBytes == null)
+{
+    try
+    {
+        jwtKeyBytes = Convert.FromBase64String(jwtKeyBase64!);
+    }
+    catch (FormatException ex)
+    {
+        if (!isDev)
+            throw new Exception("Invalid Jwt:KeyBase64: not a valid Base64 string.", ex);
+
+        // In Development, generate a key instead of failing
+        jwtKeyBytes = new byte[48];
+        RandomNumberGenerator.Fill(jwtKeyBytes);
+        jwtKeyBase64 = Convert.ToBase64String(jwtKeyBytes);
+        Console.WriteLine("[Development] Provided Jwt:KeyBase64 was invalid Base64. Generated new Jwt:KeyBase64: " + jwtKeyBase64);
+    }
+}
+
+int keyBits = jwtKeyBytes.Length * 8;
+if (keyBits <= 256)
+{
+    if (!isDev)
+        throw new Exception($"Jwt key is too short; require >256 bits but was {keyBits} bits. Provide a longer base64-encoded key in Jwt:KeyBase64.");
+
+    // In Development, generate a larger key
+    jwtKeyBytes = new byte[48];
+    RandomNumberGenerator.Fill(jwtKeyBytes);
+    jwtKeyBase64 = Convert.ToBase64String(jwtKeyBytes);
+    Console.WriteLine($"[Development] Jwt:KeyBase64 was too short ({keyBits} bits). Generated new {jwtKeyBytes.Length * 8}-bit Jwt:KeyBase64: " + jwtKeyBase64);
+}
+
+var signingKey = new SymmetricSecurityKey(jwtKeyBytes);
+// register the signing key for reuse via DI
+builder.Services.AddSingleton(signingKey);
+
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "NewsBackEnd";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "NewsBackEndAudience";
 
@@ -63,7 +141,7 @@ builder.Services.AddAuthentication(options =>
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtIssuer,
             ValidAudience = jwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            IssuerSigningKey = signingKey
         };
     });
 
@@ -88,7 +166,7 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var roles = new[] { "Admin", "Consultant" };
+    var roles = new[] { "Admin", "Consultant", "Member" };
     foreach (var r in roles)
     {
         if (!await roleManager.RoleExistsAsync(r))

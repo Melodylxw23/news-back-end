@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20251215040604_MemberTags_Normalized")]
+    partial class MemberTags_Normalized
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -34,7 +37,7 @@ namespace News_Back_end.Migrations
 
                     b.HasIndex("MembersMemberId");
 
-                    b.ToTable("MemberIndustryTags", (string)null);
+                    b.ToTable("IndustryTagMember");
                 });
 
             modelBuilder.Entity("InterestTagMember", b =>
@@ -49,7 +52,7 @@ namespace News_Back_end.Migrations
 
                     b.HasIndex("MembersMemberId");
 
-                    b.ToTable("MemberInterests", (string)null);
+                    b.ToTable("InterestTagMember");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -304,9 +307,6 @@ namespace News_Back_end.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MemberId"));
 
-                    b.Property<string>("ApplicationUserId")
-                        .HasColumnType("nvarchar(450)");
-
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -317,9 +317,8 @@ namespace News_Back_end.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<string>("Country")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                    b.Property<int>("Country")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
@@ -328,26 +327,19 @@ namespace News_Back_end.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("MembershipType")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                    b.Property<int>("MembershipType")
+                        .HasColumnType("int");
 
-                    b.Property<string>("PreferredChannel")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                    b.Property<int>("PreferredChannel")
+                        .HasColumnType("int");
 
-                    b.Property<string>("PreferredLanguage")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(50)");
+                    b.Property<int>("PreferredLanguage")
+                        .HasColumnType("int");
 
                     b.Property<string>("WeChatWorkId")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("MemberId");
-
-                    b.HasIndex("ApplicationUserId")
-                        .IsUnique()
-                        .HasFilter("[ApplicationUserId] IS NOT NULL");
 
                     b.ToTable("Members");
                 });
@@ -431,20 +423,6 @@ namespace News_Back_end.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ApplicationUser")
-                        .WithOne("Member")
-                        .HasForeignKey("News_Back_end.Models.SQLServer.Member", "ApplicationUserId");
-
-                    b.Navigation("ApplicationUser");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ApplicationUser", b =>
-                {
-                    b.Navigation("Member");
                 });
 #pragma warning restore 612, 618
         }
