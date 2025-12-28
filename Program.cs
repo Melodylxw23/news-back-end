@@ -1,11 +1,11 @@
-using Microsoft.EntityFrameworkCore;
-using News_Back_end;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using System.Security.Cryptography;
 using Microsoft.OpenApi.Models;
+using News_Back_end;
+using News_Back_end.Services;
+using System.Security.Cryptography;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +13,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Configure controllers to serialize/deserialize enums as strings for readability
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -145,10 +146,47 @@ builder.Services.AddAuthentication(options =>
         };
     });
 
+// Register crawler/translation services (typed HttpClients and scoped factory)
+builder.Services.AddHttpClient<RSSCrawlerService>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(20);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("NewsCrawler/1.0 (+you@domain)");
+});
+builder.Services.AddHttpClient<APICrawlerservice>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(20);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("NewsCrawler/1.0 (+you@domain)");
+});
+builder.Services.AddHttpClient<HTMLCrawlerService>(c =>
+{
+    c.Timeout = TimeSpan.FromSeconds(20);
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("NewsCrawler/1.0 (+you@domain)");
+});
+
+builder.Services.AddScoped<CrawlerFactory, CrawlersFactory>();
+
+// Hosted background crawler
+builder.Services.AddHostedService<NewsCrawlerBackgroundService>();
+
+// OpenAI translator (optional) - configure via appsettings or env
+var openAIApiKey = builder.Configuration["OpenAI:ApiKey"];
+var openAIBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
+if (!string.IsNullOrWhiteSpace(openAIApiKey))
+{
+    builder.Services.AddHttpClient<OpenAITranslationService>(c =>
+    {
+        c.BaseAddress = new Uri(openAIBase);
+        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIApiKey}");
+        c.Timeout = TimeSpan.FromSeconds(30);
+    });
+
+    // Register as the ITranslationService implementation
+    builder.Services.AddTransient<ITranslationService, OpenAITranslationService>();
+}
+
 builder.Services.AddAuthorization();
 
 // Register email sender: use FileEmailSender in Development, SmtpEmailSender otherwise
-// Always use FileEmailSender for now
 builder.Services.AddTransient<News_Back_end.Services.IEmailSender, News_Back_end.Services.FileEmailSender>();
 
 // Validate required config for frontend reset URL
@@ -162,9 +200,12 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["Frontend:ResetPasswordUrl"]
 
 var app = builder.Build();
 
-// Seed roles
+// Seed roles and migrate DB
 using (var scope = app.Services.CreateScope())
 {
+    var db = scope.ServiceProvider.GetRequiredService<MyDBContext>();
+    db.Database.Migrate();
+
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     var roles = new[] { "Admin", "Consultant", "Member" };
     foreach (var r in roles)
@@ -192,3 +233,8 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+namespace News_Back_end
+{
+    public partial class Program { }
+}

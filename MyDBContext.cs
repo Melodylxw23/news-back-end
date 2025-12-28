@@ -14,6 +14,8 @@ namespace News_Back_end
         public DbSet<Member> Members { get; set; } = null!;
         public DbSet<IndustryTag> IndustryTags { get; set; } = null!;
         public DbSet<InterestTag> InterestTags { get; set; } = null!;
+        public DbSet<Source> Sources { get; set; } = null!;
+        public DbSet<NewsArticle> NewsArticles { get; set; } = null!;
         
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -54,6 +56,17 @@ namespace News_Back_end
 
             modelBuilder.Entity<Member>()
                 .Property(m => m.MembershipType)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(50)");
+
+            // Ensure NewsArticle enum properties are stored as strings to match existing DB values
+            modelBuilder.Entity<Models.SQLServer.NewsArticle>()
+                .Property(n => n.Status)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(50)");
+
+            modelBuilder.Entity<Models.SQLServer.NewsArticle>()
+                .Property(n => n.TranslationStatus)
                 .HasConversion<string>()
                 .HasColumnType("nvarchar(50)");
         }
