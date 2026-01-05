@@ -92,6 +92,158 @@ namespace News_Back_end.Controllers
             return Ok("Registration successful!");
         }
 
+        //-----------------------------------------------------
+
+        // GET: api/UserControllers/members
+        [HttpGet("members")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAllMembers()
+        {
+            var members = await _context.Members
+                .Include(m => m.IndustryTags)
+                .Include(m => m.Interests)
+                .Select(m => new
+                {
+                    m.MemberId,
+                    Name = m.ContactPerson,
+                    m.Email,
+                    m.CompanyName,
+                    IndustryTags = m.IndustryTags.Select(t => new { t.IndustryTagId, t.Name }).ToList(),
+                    InterestTags = m.Interests.Select(t => new { t.InterestTagId, t.Name }).ToList(),
+                    IsActive = _context.Users.Where(u => u.Id == m.ApplicationUserId).Select(u => u.IsActive).FirstOrDefault()
+                })
+                .ToListAsync();
+
+            return Ok(new { message = "Members retrieved successfully.", data = members });
+        }
+
+        // GET: api/UserControllers/consultants
+        [HttpGet("consultants")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAllConsultants()
+        {
+            var consultants = await _userManager.Users
+                .Where(u => _context.UserRoles.Any(ur => ur.UserId == u.Id &&
+                    _context.Roles.Any(r => r.Id == ur.RoleId && r.Name == "Consultant")))
+                .Select(u => new
+                {
+                    Id = u.Id,
+                    Name = u.Name,
+                    Email = u.Email,
+                    u.WeChatWorkId,
+                    u.IsActive,
+                    u.Lastlogin
+                })
+                .ToListAsync();
+
+            return Ok(new { message = "Consultants retrieved successfully.", data = consultants });
+        }
+
+        // PUT: api/UserControllers/activate/{email}
+        [HttpPut("activate/{email}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ActivateUser(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            user.IsActive = true;
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+                return BadRequest(result.Errors);
+
+            return Ok(new { message = "User activated successfully." });
+        }
+
+        // PUT: api/UserControllers/deactivate/{email}
+        [HttpPut("deactivate/{email}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeactivateUser(string email)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            user.IsActive = false;
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+                return BadRequest(result.Errors);
+
+            return Ok(new { message = "User deactivated successfully." });
+        }
+
+        // --------------------- CREATE CONSULTANT (Admin only) ------------------------------
+        [HttpPost("create-consultant")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> CreateConsultant([FromBody] CreateConsultantDTO dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (await _userManager.FindByEmailAsync(dto.Email) != null)
+                return BadRequest(new { message = "Email is already registered." });
+
+            var user = new ApplicationUser
+            {
+                UserName = dto.Email,
+                Email = dto.Email,
+                Name = dto.Name,
+                WeChatWorkId = null,
+                IsActive = true,
+                Lastlogin = DateTime.UtcNow,
+                MustChangePassword = true  // Force password change on first login
+            };
+
+            var result = await _userManager.CreateAsync(user, dto.OneTimePassword);
+            if (!result.Succeeded)
+                return BadRequest(result.Errors);
+
+            // Ensure Consultant role exists and assign
+            if (!await _roleManager.RoleExistsAsync("Consultant"))
+                await _roleManager.CreateAsync(new IdentityRole("Consultant"));
+
+            await _userManager.AddToRoleAsync(user, "Consultant");
+
+            return Ok(new { message = "Consultant created successfully. They must change password on first login." });
+        }
+
+        // --------------------- SET INITIAL PASSWORD (for first-time login) ------------------------------
+        [HttpPost("set-initial-password")]
+        [Authorize]
+        public async Task<IActionResult> SetInitialPassword([FromBody] SetInitialPasswordDTO dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var email = User?.Identity?.Name;
+            if (string.IsNullOrEmpty(email))
+                return Unauthorized();
+
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            if (!user.MustChangePassword)
+                return BadRequest(new { message = "You are not required to change your password." });
+
+            if (dto.NewPassword != dto.ConfirmPassword)
+                return BadRequest(new { message = "Passwords do not match." });
+
+            // Generate reset token and change password
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var result = await _userManager.ResetPasswordAsync(user, token, dto.NewPassword);
+
+            if (!result.Succeeded)
+                return BadRequest(result.Errors);
+
+            // Clear the flag
+            user.MustChangePassword = false;
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new { message = "Password changed successfully. You can now login with your new password." });
+        }
+
         // --------------------- LOGIN ------------------------------
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginUserDTOs dto)
@@ -120,11 +272,11 @@ namespace News_Back_end.Controllers
             var jwtAudience = _config["Jwt:Audience"] ?? "NewsBackEndAudience";
 
             var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.Name, user.Email),
-                new Claim("name", user.Name ?? string.Empty),
-                new Claim(ClaimTypes.NameIdentifier, user.Id)
-            };
+    {
+        new Claim(ClaimTypes.Name, user.Email),
+        new Claim("name", user.Name ?? string.Empty),
+        new Claim(ClaimTypes.NameIdentifier, user.Id)
+    };
 
             foreach (var r in roles)
                 claims.Add(new Claim(ClaimTypes.Role, r));
@@ -141,7 +293,20 @@ namespace News_Back_end.Controllers
 
             var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
 
-            return Ok(new { message = $"Login successful. Welcome, {user.Name}", token = tokenString });
+            // Check if member needs to select topics (only for Member role)
+            bool needsTopicSelection = false;
+            if (roles.Contains("Member") && !user.HasSelectedTopics)
+            {
+                needsTopicSelection = true;
+            }
+
+            return Ok(new
+            {
+                message = $"Login successful. Welcome, {user.Name}",
+                token = tokenString,
+                mustChangePassword = user.MustChangePassword,
+                needsTopicSelection = needsTopicSelection  // ADD THIS LINE
+            });
         }
 
         // --------------------- UPDATE USER ------------------------------
@@ -190,7 +355,60 @@ namespace News_Back_end.Controllers
             return Ok("User updated successfully.");
         }
 
-        
+        // --------------------- SELECT TOPICS (for first-time member login) ------------------------------
+        [HttpPost("select-topics")]
+        [Authorize] // User must be authenticated
+        public async Task<IActionResult> SelectTopics([FromBody] SelectTopicsDTO dto)
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                var user = await _context.Users
+                    .FirstOrDefaultAsync(u => u.Id == userId);
+
+                if (user == null)
+                    return NotFound(new { message = "User not found" });
+
+                // Get the member profile
+                var member = await _context.Members
+                    .Include(m => m.Interests)
+                    .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+
+                if (member != null)
+                {
+                    // Clear existing interests
+                    member.Interests.Clear();
+
+                    // Add new selections for existing tags only
+                    foreach (var tagId in dto.InterestTagIds)
+                    {
+                        var tag = await _context.InterestTags.FindAsync(tagId);
+                        if (tag != null)
+                        {
+                            member.Interests.Add(tag);
+                        }
+                    }
+
+                    // Update member preferences
+                    member.PreferredLanguage = dto.PreferredLanguage;
+
+                    // Update notification channels
+                    member.NotificationChannels = dto.NotificationChannels;
+                }
+
+                // Mark that user has selected topics
+                user.HasSelectedTopics = true;
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Topics saved successfully!" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error saving topics: " + ex.Message });
+            }
+        }
+
+
         // --------------------- FORGOT PASSWORD (email flow) ------------------------------
         [HttpPost("forgot-password-request")]
         public async Task<IActionResult> ForgotPasswordRequest(ForgotPasswordRequestDTO dto)
@@ -292,7 +510,6 @@ namespace News_Back_end.Controllers
 
         // Identity handles password hashing and verification
 
-
         // --------------------- REGISTER MEMBER (creates Identity user + Member profile) ------------------------------
         [HttpPost("register-member")]
         public async Task<IActionResult> RegisterMember(MemberDTOs dto)
@@ -339,7 +556,18 @@ namespace News_Back_end.Controllers
             };
 
             _context.Members.Add(member);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(); // Save first to get member ID
+
+            // Add industry tag relationship
+            if (dto.IndustryTagId > 0)
+            {
+                var industryTag = await _context.IndustryTags.FindAsync(dto.IndustryTagId);
+                if (industryTag != null)
+                {
+                    member.IndustryTags.Add(industryTag);
+                    await _context.SaveChangesAsync();
+                }
+            }
 
             return Ok("Member registered successfully.");
         }
@@ -368,6 +596,66 @@ namespace News_Back_end.Controllers
             return Ok("Linked member to user.");
         }
 
+        // --------------------- UPDATE NOTIFICATION PREFERENCES ------------------------------
+        [HttpPost("update-notification-preferences")]
+        [Authorize]
+        public async Task<IActionResult> UpdateNotificationPreferences([FromBody] UpdateNotificationPreferencesDTO dto)
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                // Get the member profile
+                var member = await _context.Members
+                    .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+
+                if (member == null)
+                    return NotFound(new { message = "Member profile not found" });
+
+                // Update notification channels
+                member.NotificationChannels = dto.NotificationChannels;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Notification preferences updated successfully!" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error updating preferences: " + ex.Message });
+            }
+        }
+
+        // --------------------- UPDATE NOTIFICATION FREQUENCY ------------------------------
+        [HttpPost("update-notification-frequency")]
+        [Authorize]
+        public async Task<IActionResult> UpdateNotificationFrequency([FromBody] UpdateNotificationFrequencyDTO dto)
+        {
+            try
+            {
+                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                // Get the member profile
+                var member = await _context.Members
+                    .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+
+                if (member == null)
+                    return NotFound(new { message = "Member profile not found" });
+
+                // Update notification frequency settings
+                member.NotificationFrequency = dto.NotificationFrequency;
+                member.NotificationLanguage = dto.NotificationLanguage;
+                member.ApplyToAllTopics = dto.ApplyToAllTopics;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Notification frequency updated successfully!" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error updating frequency: " + ex.Message });
+            }
+        }
+
         // --------------------- GET CURRENT USER PROFILE & ROLES (for testing) ------------------------------
         [HttpGet("me")]
         [Authorize]
@@ -383,22 +671,36 @@ namespace News_Back_end.Controllers
 
             var roles = await _userManager.GetRolesAsync(user);
 
-            var member = await _context.Members
-                .Where(m => m.ApplicationUserId == user.Id)
-                .Select(m => new
+            // First, get the member WITH interests and industry tags loaded
+            var memberEntity = await _context.Members
+                .Include(m => m.Interests)
+                .Include(m => m.IndustryTags)
+                .FirstOrDefaultAsync(m => m.ApplicationUserId == user.Id);
+
+            // Then, manually project to anonymous object
+            object member = null;
+            if (memberEntity != null)
+            {
+                member = new
                 {
-                    m.MemberId,
-                    m.CompanyName,
-                    m.ContactPerson,
-                    m.Email,
-                    m.WeChatWorkId,
-                    m.Country,
-                    m.PreferredLanguage,
-                    m.PreferredChannel,
-                    m.MembershipType,
-                    m.CreatedAt
-                })
-                .FirstOrDefaultAsync();
+                    memberEntity.MemberId,
+                    memberEntity.CompanyName,
+                    memberEntity.ContactPerson,
+                    memberEntity.Email,
+                    memberEntity.WeChatWorkId,
+                    memberEntity.Country,
+                    memberEntity.PreferredLanguage,
+                    memberEntity.PreferredChannel,
+                    memberEntity.MembershipType,
+                    memberEntity.CreatedAt,
+                    memberEntity.NotificationChannels,
+                    memberEntity.NotificationFrequency,        // ADD THIS LINE
+                    memberEntity.NotificationLanguage,         // ADD THIS LINE
+                    memberEntity.ApplyToAllTopics,             // ADD THIS LINE
+                    Interests = memberEntity.Interests?.Select(i => new { i.InterestTagId, i.Name }).ToList(),
+                    IndustryTags = memberEntity.IndustryTags?.Select(i => new { i.IndustryTagId, i.Name }).ToList()
+                };
+            }
 
             return Ok(new
             {

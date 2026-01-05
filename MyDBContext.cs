@@ -16,7 +16,6 @@ namespace News_Back_end
         public DbSet<InterestTag> InterestTags { get; set; } = null!;
         public DbSet<Source> Sources { get; set; } = null!;
         public DbSet<NewsArticle> NewsArticles { get; set; } = null!;
-        
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);

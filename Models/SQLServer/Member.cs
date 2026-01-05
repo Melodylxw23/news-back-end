@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace News_Back_end.Models.SQLServer
 {
     public enum Countries
-    { 
+    {
         Singapore,
         China
     }
@@ -23,7 +23,7 @@ namespace News_Back_end.Models.SQLServer
     }
     public enum Types
     {
-        Local, 
+        Local,
         Overseas
     }
 
@@ -48,7 +48,7 @@ namespace News_Back_end.Models.SQLServer
         public string CompanyName { get; set; }
         [Required, MaxLength(50)]
         public string ContactPerson { get; set; }
-        
+
         [Required]
         [DataType(DataType.EmailAddress)]
         public string Email { get; set; }
@@ -63,9 +63,16 @@ namespace News_Back_end.Models.SQLServer
         public Types MembershipType { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
+        // Notification preferences - stores comma-separated channels: "whatsapp,email,sms,inApp"
+        public string? NotificationChannels { get; set; }
+
         // link to Identity user if this member can sign in
         public string? ApplicationUserId { get; set; }
         public ApplicationUser? ApplicationUser { get; set; }
 
+        // Add these fields after NotificationChannels
+        public string? NotificationFrequency { get; set; } // "immediate", "daily", "weekly"
+        public string? NotificationLanguage { get; set; } // "EN", "ZH"
+        public bool ApplyToAllTopics { get; set; } = true;
     }
 }

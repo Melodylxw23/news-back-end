@@ -1,0 +1,22 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace News_Back_end.DTOs
+{
+ public class CreateIndustryDTO
+ {
+ [Required, MaxLength(100)]
+ public string Name { get; set; } = null!;
+ }
+
+ public class UpdateIndustryDTO
+ {
+ [Required, MaxLength(100)]
+ public string Name { get; set; } = null!;
+ }
+
+    public class IndustryResponseDTO
+    {
+        public int IndustryTagId { get; set; }
+        public string Name { get; set; } = null!;
+    }
+}

@@ -19,6 +19,8 @@ namespace News_Back_end.DTOs
 
         [Required]
         public Countries Country { get; set; }
+        [Required]
+        public int IndustryTagId { get; set; }
 
         public Language PreferredLanguage { get; set; } = Language.EN;
 

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260105110112_AddSelectedTopicsToApplicationUser")]
+    partial class AddSelectedTopicsToApplicationUser
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -313,9 +316,6 @@ namespace News_Back_end.Migrations
                     b.Property<string>("ApplicationUserId")
                         .HasColumnType("nvarchar(450)");
 
-                    b.Property<bool>("ApplyToAllTopics")
-                        .HasColumnType("bit");
-
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -340,15 +340,6 @@ namespace News_Back_end.Migrations
                     b.Property<string>("MembershipType")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("NotificationChannels")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NotificationFrequency")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("NotificationLanguage")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PreferredChannel")
                         .IsRequired()
