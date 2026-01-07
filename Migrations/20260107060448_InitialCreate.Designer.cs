@@ -12,8 +12,8 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    [Migration("20260105074806_AddMustChangePasswordField")]
-    partial class AddMustChangePasswordField
+    [Migration("20260107060448_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -207,6 +207,9 @@ namespace News_Back_end.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("HasSelectedTopics")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -313,6 +316,9 @@ namespace News_Back_end.Migrations
                     b.Property<string>("ApplicationUserId")
                         .HasColumnType("nvarchar(450)");
 
+                    b.Property<bool>("ApplyToAllTopics")
+                        .HasColumnType("bit");
+
                     b.Property<string>("CompanyName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -337,6 +343,15 @@ namespace News_Back_end.Migrations
                     b.Property<string>("MembershipType")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("NotificationChannels")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NotificationFrequency")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NotificationLanguage")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PreferredChannel")
                         .IsRequired()
@@ -429,6 +444,12 @@ namespace News_Back_end.Migrations
                     b.Property<string>("TranslationReviewedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime?>("TranslationSavedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TranslationSavedBy")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("TranslationStatus")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
@@ -492,6 +513,36 @@ namespace News_Back_end.Migrations
                     b.HasKey("SourceId");
 
                     b.ToTable("Sources");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("NewsArticleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PerformedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PerformedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TranslationAudits");
                 });
 
             modelBuilder.Entity("IndustryTagMember", b =>

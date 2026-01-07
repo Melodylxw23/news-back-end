@@ -174,15 +174,13 @@ var openAIApiKey = builder.Configuration["OpenAI:ApiKey"];
 var openAIBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
 if (!string.IsNullOrWhiteSpace(openAIApiKey))
 {
-    builder.Services.AddHttpClient<OpenAITranslationService>(c =>
+    // Register OpenAITranslationService as a typed HttpClient implementation of ITranslationService
+    builder.Services.AddHttpClient<ITranslationService, OpenAITranslationService>(c =>
     {
         c.BaseAddress = new Uri(openAIBase);
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIApiKey}");
         c.Timeout = TimeSpan.FromSeconds(30);
     });
-
-    // Register as the ITranslationService implementation
-    builder.Services.AddTransient<ITranslationService, OpenAITranslationService>();
 }
 
 builder.Services.AddAuthorization();

@@ -1,6 +1,9 @@
 ﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using News_Back_end.Models.SQLServer;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace News_Back_end
 {
@@ -16,6 +19,7 @@ namespace News_Back_end
         public DbSet<InterestTag> InterestTags { get; set; } = null!;
         public DbSet<Source> Sources { get; set; } = null!;
         public DbSet<NewsArticle> NewsArticles { get; set; } = null!;
+        public DbSet<TranslationAudit> TranslationAudits { get; set; } = null!;
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -68,6 +72,39 @@ namespace News_Back_end
                 .Property(n => n.TranslationStatus)
                 .HasConversion<string>()
                 .HasColumnType("nvarchar(50)");
+        }
+
+        // Ensure consistent semantics: if a translation was saved by the crawler, mark status InProgress
+        private void ApplyCrawlerTranslationRules()
+        {
+            var entries = ChangeTracker.Entries<NewsArticle>()
+                .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified)
+                .Select(e => e.Entity);
+
+            foreach (var article in entries)
+            {
+                if (!string.IsNullOrWhiteSpace(article.TranslationSavedBy) &&
+                    article.TranslationSavedBy.Equals("crawler", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Do not override a human-approved translation
+                    if (article.TranslationStatus != TranslationStatus.Translated)
+                    {
+                        article.TranslationStatus = TranslationStatus.InProgress;
+                    }
+                }
+            }
+        }
+
+        public override int SaveChanges()
+        {
+            ApplyCrawlerTranslationRules();
+            return base.SaveChanges();
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            ApplyCrawlerTranslationRules();
+            return base.SaveChangesAsync(cancellationToken);
         }
     }
 }

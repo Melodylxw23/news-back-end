@@ -6,7 +6,7 @@ namespace News_Back_end.Models.SQLServer
     {
         public int NewsArticleId { get; set; }
 
-        [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.MaxLength(500)]
+        [Required, MaxLength(500)]
         public string Title { get; set; } = null!;
 
         // original content fetched from source
@@ -16,18 +16,21 @@ namespace News_Back_end.Models.SQLServer
         public string? TranslatedContent { get; set; }
 
         // original language code e.g. "en" or "zh"
-        [System.ComponentModel.DataAnnotations.MaxLength(10)]
+        [MaxLength(10)]
         public string OriginalLanguage { get; set; } = "en";
 
         // target language of TranslatedContent
-        [System.ComponentModel.DataAnnotations.MaxLength(10)]
+        [MaxLength(10)]
         public string? TranslationLanguage { get; set; }
 
         public TranslationStatus TranslationStatus { get; set; } = TranslationStatus.Pending;
         public string? TranslationReviewedBy { get; set; }
         public DateTime? TranslationReviewedAt { get; set; }
+        // who saved the current TranslatedContent and when
+        public string? TranslationSavedBy { get; set; }
+        public DateTime? TranslationSavedAt { get; set; }
 
-        [System.ComponentModel.DataAnnotations.Required, System.ComponentModel.DataAnnotations.MaxLength(1000)]
+        [Required, MaxLength(1000)]
         public string SourceURL { get; set; } = null!;
 
         public DateTime? PublishedAt { get; set; }
@@ -54,6 +57,6 @@ namespace News_Back_end.Models.SQLServer
         public DateTime? UpdatedAt { get; set; }
     }
 
-    public enum TranslationStatus { Pending, Reviewed }
+    public enum TranslationStatus { Pending, InProgress, Translated }
     public enum ArticleStatus { Draft, Published }
 }

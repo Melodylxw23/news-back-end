@@ -441,6 +441,12 @@ namespace News_Back_end.Migrations
                     b.Property<string>("TranslationReviewedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<DateTime?>("TranslationSavedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TranslationSavedBy")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("TranslationStatus")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
@@ -504,6 +510,36 @@ namespace News_Back_end.Migrations
                     b.HasKey("SourceId");
 
                     b.ToTable("Sources");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("NewsArticleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PerformedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PerformedBy")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("TranslationAudits");
                 });
 
             modelBuilder.Entity("IndustryTagMember", b =>

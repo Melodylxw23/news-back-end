@@ -612,14 +612,37 @@ namespace News_Back_end.Services
                                 {
                                     entity.TranslationLanguage = "en";
                                     entity.TranslatedContent = await translationService.TranslateAsync(entity.OriginalContent, "en");
-                                    entity.TranslationStatus = Models.SQLServer.TranslationStatus.Reviewed;
+                                    // auto-translated by crawler: mark InProgress so consultant reviews
+                                    entity.TranslationStatus = Models.SQLServer.TranslationStatus.InProgress;
+                                    entity.TranslationReviewedBy = null;
+                                    entity.TranslationReviewedAt = null;
                                 }
                                 else
                                 {
                                     entity.TranslationLanguage = "zh";
                                     entity.TranslatedContent = await translationService.TranslateAsync(entity.OriginalContent, "zh");
-                                    entity.TranslationStatus = Models.SQLServer.TranslationStatus.Reviewed;
+                                    // auto-translated by crawler: mark InProgress so consultant reviews
+                                    entity.TranslationStatus = Models.SQLServer.TranslationStatus.InProgress;
+                                    entity.TranslationReviewedBy = null;
+                                    entity.TranslationReviewedAt = null;
                                 }
+
+                                // record that crawler saved the translation
+                                try
+                                {
+                                    entity.TranslationSavedBy = "crawler";
+                                    entity.TranslationSavedAt = DateTime.Now;
+                                    // add audit record
+                                    db.TranslationAudits.Add(new TranslationAudit
+                                    {
+                                        NewsArticleId = entity.NewsArticleId,
+                                        Action = "Saved",
+                                        PerformedBy = entity.TranslationSavedBy ?? "crawler",
+                                        PerformedAt = DateTime.Now,
+                                        Details = entity.TranslationLanguage
+                                    });
+                                }
+                                catch { /* non-fatal */ }
                             }
 
                             db.NewsArticles.Add(entity);

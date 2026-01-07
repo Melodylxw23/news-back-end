@@ -14,7 +14,9 @@ namespace News_Back_end.DTOs
         string SourceURL,
         DateTime? PublishedAt,
         DateTime CrawledAt,
-        int? SourceId);
+        int? SourceId,
+        string? TranslationSavedBy = null,
+        DateTime? TranslationSavedAt = null);
 
     public class PagedResult<T>
     {
