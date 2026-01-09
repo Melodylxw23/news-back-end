@@ -4,11 +4,18 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using News_Back_end;
+using News_Back_end.Models;
 using News_Back_end.Services;
 using System.Security.Cryptography;
 
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Register settings + services (place here)
+builder.Services.Configure<EmailSettings>(
+    builder.Configuration.GetSection("EmailSettings"));
+// register via interface
+builder.Services.AddTransient<IEmailSender, EmailService>();
 
 // Add services to the container.
 // Configure controllers to serialize/deserialize enums as strings for readability
@@ -187,7 +194,11 @@ builder.Services.AddAuthorization();
 
 // Register email sender: use FileEmailSender in Development, SmtpEmailSender otherwise
 // Always use FileEmailSender for now
-builder.Services.AddTransient<News_Back_end.Services.IEmailSender, News_Back_end.Services.FileEmailSender>();// Validate required config for frontend reset URL
+if (isDev)
+    builder.Services.AddTransient<IEmailSender, FileEmailSender>();
+else
+    builder.Services.AddTransient<IEmailSender, EmailService>();
+// Validate required config for frontend reset URL
 if (string.IsNullOrWhiteSpace(builder.Configuration["Frontend:ResetPasswordUrl"]))
 {
     var msg = "Missing configuration: Frontend:ResetPasswordUrl";
@@ -198,8 +209,6 @@ if (string.IsNullOrWhiteSpace(builder.Configuration["Frontend:ResetPasswordUrl"]
 
 var app = builder.Build();
 
-
-
 // Seed roles and apply migrations
 using (var scope = app.Services.CreateScope())
 {
@@ -207,10 +216,32 @@ using (var scope = app.Services.CreateScope())
     try
     {
         db.Database.Migrate();
+
+        // Explicit runtime checks to catch LocalDB/migration problems early
+        var conn = db.Database.GetDbConnection();
+        Console.WriteLine($"[DB] Provider: {db.Database.ProviderName}, DataSource: {conn.DataSource}, Database: {conn.Database}");
+        try
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Sources'";
+            var cntObj = cmd.ExecuteScalar();
+            var count = cntObj == null ? 0 : Convert.ToInt32(cntObj);
+            if (count == 0)
+            {
+                throw new Exception("Required table 'Sources' does not exist in the target database. Ensure migrations were applied to the correct database/instance.");
+            }
+        }
+        finally
+        {
+            try { conn.Close(); } catch { }
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"Database migrate failed: {ex.Message}");
+        // Log full exception and fail startup so the problem is visible and addressed
+        Console.WriteLine($"Database migrate/check failed: {ex}");
+        throw;
     }
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
@@ -240,4 +271,14 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+
+
+
+
+
+
+
+
+
 

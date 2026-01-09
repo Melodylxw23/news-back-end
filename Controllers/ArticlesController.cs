@@ -124,7 +124,7 @@ namespace News_Back_end.Controllers
             string finalText;
             if (!string.IsNullOrWhiteSpace(dto.EditedTranslation))
             {
-                // edited translation provided by user — save as Pending for review
+                // edited translation provided by user ?save as Pending for review
                 finalText = dto.EditedTranslation!;
 
                 if (string.Equals(finalText?.Trim(), sourceText?.Trim(), StringComparison.Ordinal))
