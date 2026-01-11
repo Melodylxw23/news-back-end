@@ -14,8 +14,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Register settings + services (place here)
 builder.Services.Configure<EmailSettings>(
     builder.Configuration.GetSection("EmailSettings"));
-// register via interface
-builder.Services.AddTransient<IEmailSender, EmailService>();
 
 // Add services to the container.
 // Configure controllers to serialize/deserialize enums as strings for readability
@@ -45,6 +43,11 @@ builder.Services.AddSwaggerGen(c =>
             new string[] { }
         }
     });
+
+    // Helpful for dev: register common local server URLs so Swagger posts to the correct scheme/port
+    // Adjust ports if your launch profile uses other ports.
+    c.AddServer(new OpenApiServer { Url = "https://localhost:7191" });
+    c.AddServer(new OpenApiServer { Url = "http://localhost:5216" });
 });
 
 // Register EF Core DbContext for SQL Server
@@ -62,9 +65,19 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins(allowedOrigins)
-              .AllowAnyHeader()
-              .AllowAnyMethod();
+        // In Development allow any origin to avoid CORS issues while testing Swagger/UI locally
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
+        else
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
     });
 });
 
@@ -269,7 +282,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
 app.Run();
 
 

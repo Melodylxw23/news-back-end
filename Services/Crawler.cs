@@ -658,7 +658,7 @@ namespace News_Back_end.Services
                     }
                 }
 
-                await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
+               
             }
         }
     }
