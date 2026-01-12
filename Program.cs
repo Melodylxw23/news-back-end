@@ -11,14 +11,14 @@ using System.Security.Cryptography;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Register settings + services (place here)
-builder.Services.Configure<EmailSettings>(
-    builder.Configuration.GetSection("EmailSettings"));
 
 // Add services to the container.
 // Configure controllers to serialize/deserialize enums as strings for readability
 builder.Services.AddControllers()
     .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+
+//gmail service
+builder.Services.AddTransient<GmailEmailService>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -205,12 +205,8 @@ if (!string.IsNullOrWhiteSpace(openAIApiKey))
 
 builder.Services.AddAuthorization();
 
-// Register email sender: use FileEmailSender in Development, SmtpEmailSender otherwise
-// Always use FileEmailSender for now
-if (isDev)
-    builder.Services.AddTransient<IEmailSender, FileEmailSender>();
-else
-    builder.Services.AddTransient<IEmailSender, EmailService>();
+
+
 // Validate required config for frontend reset URL
 if (string.IsNullOrWhiteSpace(builder.Configuration["Frontend:ResetPasswordUrl"]))
 {

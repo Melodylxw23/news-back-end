@@ -24,7 +24,7 @@ namespace News_Back_end.Controllers
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly SignInManager<ApplicationUser> _signInManager;
         private readonly RoleManager<IdentityRole> _roleManager;
-        private readonly Services.IEmailSender _emailSender;
+        private readonly GmailEmailService _emailService;
         private readonly IWebHostEnvironment _env;
         private readonly SymmetricSecurityKey _signingKey;
 
@@ -32,7 +32,7 @@ namespace News_Back_end.Controllers
             UserManager<ApplicationUser> userManager,
             SignInManager<ApplicationUser> signInManager, 
             RoleManager<IdentityRole> roleManager,
-            Services.IEmailSender emailSender,
+            GmailEmailService emailService,
             IWebHostEnvironment env,
             SymmetricSecurityKey signingKey)
         {
@@ -41,7 +41,7 @@ namespace News_Back_end.Controllers
             _userManager = userManager;
             _signInManager = signInManager;
             _roleManager = roleManager;
-            _emailSender = emailSender;
+            _emailService = emailService;
             _env = env;
             _signingKey = signingKey;
         }
@@ -432,7 +432,7 @@ namespace News_Back_end.Controllers
             var subject = "Password reset request";
             var html = $"<p>Click the link to reset your password:</p><p><a href=\"{link}\">Reset password</a></p>";
 
-            await _emailSender.SendEmailAsync(user.Email, subject, html);
+            await _emailService.SendEmailAsync(user.Email, subject, html);
 
             return Ok("Password reset email sent.");
         }
