@@ -203,6 +203,19 @@ if (!string.IsNullOrWhiteSpace(openAIApiKey))
     });
 }
 
+// Register dedicated OpenAIBroadcastService from OpenAIBroadcasr configuration section (note intentional key name to match user's file)
+var openAIBroadcastKey = builder.Configuration["OpenAIBroadcast:ApiKey"];
+if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
+{
+    var openAIBroadcastBase = builder.Configuration["OpenAIBroadcast:BaseUrl"] ?? "https://api.openai.com/";
+    builder.Services.AddHttpClient<IAiBroadcastService, OpenAIBroadcastService>(c =>
+    {
+        c.BaseAddress = new Uri(openAIBroadcastBase);
+        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIBroadcastKey}");
+        c.Timeout = TimeSpan.FromSeconds(30);
+    });
+}
+
 builder.Services.AddAuthorization();
 
 

@@ -20,6 +20,7 @@ namespace News_Back_end
         public DbSet<Source> Sources { get; set; } = null!;
         public DbSet<NewsArticle> NewsArticles { get; set; } = null!;
         public DbSet<TranslationAudit> TranslationAudits { get; set; } = null!;
+        public DbSet<BroadcastMessage> BroadcastMessages { get; set; } = null!;
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -70,6 +71,17 @@ namespace News_Back_end
 
             modelBuilder.Entity<Models.SQLServer.NewsArticle>()
                 .Property(n => n.TranslationStatus)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(50)");
+
+            // BroadcastMessage enums as strings
+            modelBuilder.Entity<BroadcastMessage>()
+                .Property(b => b.Channel)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(50)");
+
+            modelBuilder.Entity<BroadcastMessage>()
+                .Property(b => b.Status)
                 .HasConversion<string>()
                 .HasColumnType("nvarchar(50)");
         }

@@ -1,10 +1,16 @@
-﻿using MailKit.Net.Smtp;
-using MailKit.Security;
-using MimeKit;
+﻿using MimeKit;
+using Google.Apis.Gmail.v1;
+using Google.Apis.Gmail.v1.Data;
+using Google.Apis.Services;
+using System.IO;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Flows;
 using Google.Apis.Auth.OAuth2.Responses;
 using Microsoft.Extensions.Configuration;
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using MailKit;
 
 public class GmailEmailService
 {
@@ -37,21 +43,40 @@ public class GmailEmailService
         var credential = new UserCredential(flow, userEmail, token);
         await credential.RefreshTokenAsync(System.Threading.CancellationToken.None);
 
-        string accessToken = credential.Token.AccessToken;
+        string accessToken = credential.Token?.AccessToken;
 
-        // Step 2: Build Email
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress("Your Company", userEmail));
-        message.To.Add(new MailboxAddress("", toEmail));
-        message.Subject = subject;
-        message.Body = new TextPart("html") { Text = htmlBody };
+        // Fail fast if we don't have an access token
+        if (string.IsNullOrWhiteSpace(accessToken))
+            throw new InvalidOperationException("Failed to obtain Gmail access token. Verify refresh token and scopes (mail scope required).");
 
-        // Step 3: Send via MailKit with OAuth2
-        using var client = new SmtpClient();
-        await client.ConnectAsync("smtp.gmail.com", 587, SecureSocketOptions.StartTls);
-        var oauth2 = new SaslMechanismOAuth2(userEmail, accessToken);
-        await client.AuthenticateAsync(oauth2);
-        await client.SendAsync(message);
-        await client.DisconnectAsync(true);
+        // Step 2: Build MIME message
+        var mime = new MimeMessage();
+        mime.From.Add(new MailboxAddress("Your Company", userEmail));
+        mime.To.Add(new MailboxAddress("", toEmail));
+        mime.Subject = subject;
+        mime.Body = new TextPart("html") { Text = htmlBody };
+
+        // Convert MIME to base64url string required by Gmail API
+        byte[] rawBytes;
+        using (var ms = new MemoryStream())
+        {
+            await mime.WriteToAsync(ms, CancellationToken.None);
+            rawBytes = ms.ToArray();
+        }
+
+        string raw = Convert.ToBase64String(rawBytes)
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .TrimEnd('=');
+
+        // Step 3: Send via Gmail REST API
+        var service = new GmailService(new BaseClientService.Initializer
+        {
+            HttpClientInitializer = credential,
+            ApplicationName = "NewsBackEnd"
+        });
+
+        var msg = new Message { Raw = raw };
+        await service.Users.Messages.Send(msg, "me").ExecuteAsync();
     }
 }
