@@ -9,6 +9,7 @@ namespace News_Back_end.DTOs
  public string Subject { get; set; } = string.Empty;
  public string Body { get; set; } = string.Empty;
  public BroadcastChannel Channel { get; set; } = BroadcastChannel.Email;
+ public BroadcastAudience TargetAudience { get; set; } = BroadcastAudience.All;
  public DateTimeOffset? ScheduledSendAt { get; set; }
  }
 

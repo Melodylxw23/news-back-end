@@ -11,6 +11,9 @@ namespace News_Back_end.DTOs
  // Desired channel for context (optional)
  public BroadcastChannel? Channel { get; set; }
 
+ // Desired audience (optional)
+ public BroadcastAudience TargetAudience { get; set; } = BroadcastAudience.All;
+
  // Desired language code (e.g., en, zh) - optional
  public string? Language { get; set; }
  }
