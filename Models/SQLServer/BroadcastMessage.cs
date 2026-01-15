@@ -2,6 +2,17 @@ using System;
 
 namespace News_Back_end.Models.SQLServer
 {
+ [Flags]
+ public enum BroadcastAudience
+ {
+ All =1,
+ Technology =2,
+ Business =4,
+ Sports =8,
+ Entertainment =16,
+ Politics =32
+ }
+
  public enum BroadcastChannel
  {
  Email,
@@ -33,6 +44,9 @@ namespace News_Back_end.Models.SQLServer
 
  // Which channel this broadcast is for
  public BroadcastChannel Channel { get; set; } = BroadcastChannel.Email;
+
+ // Which audience this broadcast targets (flags allow multiple selections)
+ public BroadcastAudience TargetAudience { get; set; } = BroadcastAudience.All;
 
  // Draft/scheduled/sent state
  public BroadcastStatus Status { get; set; } = BroadcastStatus.Draft;

@@ -47,6 +47,7 @@ namespace News_Back_end.Controllers
  Subject = dto.Subject,
  Body = dto.Body,
  Channel = dto.Channel,
+ TargetAudience = dto.TargetAudience,
  Status = BroadcastStatus.Draft,
  ScheduledSendAt = dto.ScheduledSendAt,
  CreatedAt = DateTimeOffset.UtcNow,
@@ -74,6 +75,7 @@ namespace News_Back_end.Controllers
  existing.Subject = dto.Subject;
  existing.Body = dto.Body;
  existing.Channel = dto.Channel;
+ existing.TargetAudience = dto.TargetAudience;
  if (dto.Status.HasValue) existing.Status = dto.Status.Value;
  existing.ScheduledSendAt = dto.ScheduledSendAt;
  existing.UpdatedAt = DateTimeOffset.UtcNow;
@@ -113,6 +115,7 @@ namespace News_Back_end.Controllers
  var promptBuilder = new System.Text.StringBuilder();
  promptBuilder.AppendLine(req.Prompt.Trim());
  if (req.Channel.HasValue) promptBuilder.AppendLine($"Channel: {req.Channel.Value}");
+ if (req.TargetAudience != BroadcastAudience.All) promptBuilder.AppendLine($"TargetAudience: {req.TargetAudience}");
  promptBuilder.AppendLine("Return JSON with keys: title, subject, body. Keep title <=8 words, subject <=12 words.");
 
  var gen = await _aiBroadcast.GenerateAsync(promptBuilder.ToString(), req.Language ?? "en");
@@ -152,6 +155,7 @@ namespace News_Back_end.Controllers
  Subject = string.IsNullOrWhiteSpace(subject) ? ("Update: " + req.Prompt.Truncate(120)) : subject,
  Body = string.IsNullOrWhiteSpace(body) ? req.Prompt : body,
  Channel = req.Channel ?? BroadcastChannel.Email,
+ TargetAudience = req.TargetAudience,
  Status = BroadcastStatus.Draft,
  CreatedAt = DateTimeOffset.UtcNow,
  UpdatedAt = DateTimeOffset.UtcNow,

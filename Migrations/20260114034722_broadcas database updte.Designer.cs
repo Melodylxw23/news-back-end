@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260114034722_broadcas database updte")]
+    partial class broadcasdatabaseupdte
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -266,51 +269,6 @@ namespace News_Back_end.Migrations
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
 
                     b.ToTable("AspNetUsers", (string)null);
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ArticleLabel", b =>
-                {
-                    b.Property<int>("LabelId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LabelId"));
-
-                    b.Property<DateTime>("AddedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("AddedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CompletedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<int>("NewsId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text");
-
-                    b.Property<int?>("SummaryId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("WorkflowStatus")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.HasKey("LabelId");
-
-                    b.HasIndex("NewsId");
-
-                    b.HasIndex("SummaryId");
-
-                    b.ToTable("ArticleLabels");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastMessage", b =>
@@ -605,88 +563,6 @@ namespace News_Back_end.Migrations
                     b.ToTable("Sources");
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.Summary", b =>
-                {
-                    b.Property<int>("SummaryId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SummaryId"));
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EditNotes")
-                        .HasColumnType("text");
-
-                    b.Property<int>("NewsId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("PdfEditedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PdfEditedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("PdfGeneratedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PdfGeneratedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("PdfPath")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<DateTime?>("PptEditedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PptEditedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("PptGeneratedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PptGeneratedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("PptPath")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime?>("SummaryEditedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SummaryEditedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("SummaryGeneratedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SummaryGeneratedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("SummaryText")
-                        .HasColumnType("text");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("SummaryId");
-
-                    b.HasIndex("NewsId");
-
-                    b.ToTable("Summaries");
-                });
-
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
                 {
                     b.Property<int>("Id")
@@ -798,23 +674,6 @@ namespace News_Back_end.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ArticleLabel", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.NewsArticle", "NewsArticle")
-                        .WithMany()
-                        .HasForeignKey("NewsId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("News_Back_end.Models.SQLServer.Summary", "Summary")
-                        .WithMany()
-                        .HasForeignKey("SummaryId");
-
-                    b.Navigation("NewsArticle");
-
-                    b.Navigation("Summary");
-                });
-
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>
                 {
                     b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ApplicationUser")
@@ -831,17 +690,6 @@ namespace News_Back_end.Migrations
                         .HasForeignKey("SourceId");
 
                     b.Navigation("Source");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.Summary", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.NewsArticle", "NewsArticle")
-                        .WithMany()
-                        .HasForeignKey("NewsId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("NewsArticle");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.ApplicationUser", b =>
