@@ -231,7 +231,8 @@ namespace News_Back_end.Controllers
             }
             catch { /* non-fatal */ }
 
-            return Ok(new {
+            return Ok(new
+            {
                 article.NewsArticleId,
                 article.TranslationStatus,
                 article.TranslationLanguage,
@@ -273,6 +274,37 @@ namespace News_Back_end.Controllers
             }
             catch { }
 
+            // Automatically push approved article to Content Creation (Active Articles)
+            bool pushedToContentCreation = false;
+            string? pushError = null;
+            try
+            {
+                var existingLabel = await _db.ArticleLabels.FirstOrDefaultAsync(al => al.NewsId == a.NewsArticleId);
+                if (existingLabel == null)
+                {
+                    var articleLabel = new ArticleLabel
+                    {
+                        NewsId = a.NewsArticleId,
+                        WorkflowStatus = "Active",
+                        AddedAt = DateTime.Now,
+                        AddedBy = "System-AutoPush",
+                        Notes = "Automatically added after translation approval"
+                    };
+                    _db.ArticleLabels.Add(articleLabel);
+                    await _db.SaveChangesAsync();
+                    pushedToContentCreation = true;
+                }
+                else
+                {
+                    pushError = "Article already exists in Content Creation workflow";
+                }
+            }
+            catch (Exception ex)
+            {
+                pushError = ex.Message;
+                Console.WriteLine($"Failed to auto-push article {a.NewsArticleId} to Content Creation: {ex.Message}");
+            }
+
             return Ok(new
             {
                 a.NewsArticleId,
@@ -280,17 +312,28 @@ namespace News_Back_end.Controllers
                 a.TranslationLanguage,
                 TranslatedContent = a.TranslatedContent,
                 ReviewedBy = a.TranslationReviewedBy,
-                ReviewedAt = a.TranslationReviewedAt
+                ReviewedAt = a.TranslationReviewedAt,
+                PushedToContentCreation = pushedToContentCreation,
+                PushError = pushError
             });
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> Get([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? status = null)
         {
             if (page <= 0) page = 1;
             if (pageSize <= 0 || pageSize > 100) pageSize = 20;
 
-            var q = _db.NewsArticles.OrderByDescending(a => a.PublishedAt ?? a.CreatedAt);
+            var q = _db.NewsArticles.AsQueryable();
+
+            // Filter by translation status if provided
+            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<Models.SQLServer.TranslationStatus>(status, true, out var parsedStatus))
+            {
+                q = q.Where(a => a.TranslationStatus == parsedStatus);
+            }
+
+            q = q.OrderByDescending(a => a.PublishedAt ?? a.CreatedAt);
+            
             var total = await q.LongCountAsync();
             var items = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
 
@@ -367,7 +410,7 @@ namespace News_Back_end.Controllers
             return Ok(new { Article = dto, OriginalContent = a.OriginalContent, TranslatedContent = a.TranslatedContent, a.NLPKeywords, a.NamedEntities, a.SentimentScore });
         }
 
-        
+
 
         // DELETE: api/articles/{id}
         [HttpDelete("{id:int}")]
@@ -413,26 +456,27 @@ namespace News_Back_end.Controllers
         {
             var total = await _db.NewsArticles.LongCountAsync();
 
-            // Count translated: explicit Translated status OR saved translation timestamp
+            // Count translated: ONLY manually approved/reviewed articles
             var translated = await _db.NewsArticles
                 .AsNoTracking()
-                .LongCountAsync(a => a.TranslationSavedAt != null
-                    || a.TranslationStatus == Models.SQLServer.TranslationStatus.Translated);
+                .LongCountAsync(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.Translated
+                    && a.TranslationReviewedAt != null);
 
-            // Count in-progress: statuses that indicate progress/review (adjust to your enum values)
+            // Count in-progress articles
             var inProgress = await _db.NewsArticles
-                .AsNoTracking()
-                .LongCountAsync(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.InProgress
-                    || a.TranslationStatus == Models.SQLServer.TranslationStatus.InProgress);
+    .AsNoTracking()
+  .LongCountAsync(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.InProgress);
 
-            // pending = remaining items
-            var pending = Math.Max(0L, total - translated - inProgress);
+      // Count pending articles (explicitly)
+       var pending = await _db.NewsArticles
+  .AsNoTracking()
+      .LongCountAsync(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.Pending);
 
             var bySource = await _db.NewsArticles
-                .GroupBy(a => a.SourceId)
-                .Select(g => new { SourceId = g.Key, Count = g.LongCount() })
-                .ToListAsync();
-                
+  .GroupBy(a => a.SourceId)
+.Select(g => new { SourceId = g.Key, Count = g.LongCount() })
+  .ToListAsync();
+
             return Ok(new { total, pending, inProgress, translated, bySource });
         }
 

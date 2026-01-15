@@ -216,6 +216,19 @@ if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
     });
 }
 
+// Register dedicated OpenAIContentCreationService from OpenAIContentCreation configuration section
+var openAIContentCreationKey = builder.Configuration["OpenAIContentCreation:ApiKey"];
+if (!string.IsNullOrWhiteSpace(openAIContentCreationKey))
+{
+    var openAIContentCreationBase = builder.Configuration["OpenAIContentCreation:BaseUrl"] ?? "https://api.openai.com/";
+    builder.Services.AddHttpClient<IContentCreationService, OpenAIContentCreationService>(c =>
+    {
+        c.BaseAddress = new Uri(openAIContentCreationBase);
+        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIContentCreationKey}");
+        c.Timeout = TimeSpan.FromSeconds(30);
+    });
+}
+
 builder.Services.AddAuthorization();
 
 
@@ -284,6 +297,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// Serve static files from GeneratedAssets folder for PDF/PPT downloads
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
+        Path.Combine(Directory.GetCurrentDirectory(), "GeneratedAssets")),
+    RequestPath = "/GeneratedAssets"
+});
 
 app.UseCors();
 

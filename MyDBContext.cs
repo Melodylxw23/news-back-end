@@ -21,6 +21,9 @@ namespace News_Back_end
         public DbSet<NewsArticle> NewsArticles { get; set; } = null!;
         public DbSet<TranslationAudit> TranslationAudits { get; set; } = null!;
         public DbSet<BroadcastMessage> BroadcastMessages { get; set; } = null!;
+        public DbSet<ArticleLabel> ArticleLabels { get; set; } = null!;
+        public DbSet<Summary> Summaries { get; set; } = null!;
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
