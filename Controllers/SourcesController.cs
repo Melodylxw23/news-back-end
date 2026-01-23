@@ -237,7 +237,19 @@ namespace News_Back_end.Controllers
                     return (Source: src, Articles: new List<CrawlerDTO>(), ArticleDtos: new List<object>());
                 }
 
-                var articles = await crawler.CrawlAsync(src) ?? new List<CrawlerDTO>();
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                List<CrawlerDTO> articles;
+                string? error = null;
+                try
+                {
+                    articles = await crawler.CrawlAsync(src) ?? new List<CrawlerDTO>();
+                }
+                catch (System.Exception ex)
+                {
+                    articles = new List<CrawlerDTO>();
+                    error = ex.Message;
+                }
+                sw.Stop();
                 var articleDtosLocal = new List<object>();
                 foreach (var a in articles)
                 {
@@ -254,6 +266,24 @@ namespace News_Back_end.Controllers
                         Content = a.Content
                     });
                 }
+
+                // record metric (best-effort, don't throw)
+                try
+                {
+                    var metric = new FetchMetric
+                    {
+                        SourceId = src.SourceId,
+                        Timestamp = System.DateTime.Now,
+                        Success = string.IsNullOrWhiteSpace(error),
+                        ItemsFetched = articles.Count,
+                        DurationMs = (int)sw.ElapsedMilliseconds,
+                        ErrorMessage = error
+                    };
+                    // Use separate context operations to avoid concurrency with the main loop
+                    _db.FetchMetrics.Add(metric);
+                    await _db.SaveChangesAsync();
+                }
+                catch { }
 
                 return (Source: src, Articles: articles, ArticleDtos: articleDtosLocal);
             }).ToArray();
@@ -276,7 +306,8 @@ namespace News_Back_end.Controllers
 
                         var entity = new NewsArticle
                         {
-                            Title = a.Title ?? string.Empty,
+                            TitleZH = a.Title ?? string.Empty,
+                            TitleEN = null,
                             OriginalContent = a.Content ?? string.Empty,
                             SourceURL = a.SourceURL ?? string.Empty,
                             PublishedAt = a.PublishedDate,

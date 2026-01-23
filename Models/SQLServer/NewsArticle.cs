@@ -7,7 +7,10 @@ namespace News_Back_end.Models.SQLServer
         public int NewsArticleId { get; set; }
 
         [Required, MaxLength(500)]
-        public string Title { get; set; } = null!;
+        public string TitleZH { get; set; } = null!;
+
+        [MaxLength(500)]
+        public string? TitleEN { get; set; }
 
         // original content fetched from source
         public string OriginalContent { get; set; } = null!;
@@ -40,8 +43,16 @@ namespace News_Back_end.Models.SQLServer
         public int? SourceId { get; set; }
         public Source? Source { get; set; }
 
-        // optional summary reference
-        public int? SummaryId { get; set; }
+        // Generated summaries
+        public string? SummaryEN { get; set; }
+        public string? SummaryZH { get; set; }
+
+        // Full article content in English/Chinese produced by AI
+        public string? FullContentEN { get; set; }
+        public string? FullContentZH { get; set; }
+
+        // Which SourceDescriptionSetting produced this article (optional)
+        public int? DescriptionSettingId { get; set; }
 
         // NLP outputs as JSON/text
         public string? NLPKeywords { get; set; }

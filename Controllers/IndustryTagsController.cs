@@ -24,8 +24,8 @@ namespace News_Back_end.Controllers
         public async Task<IActionResult> GetAll()
         {
             var list = await _context.IndustryTags
-                .OrderBy(i => i.Name)
-                .Select(i => new { i.IndustryTagId, i.Name })
+                .OrderBy(i => i.NameEN)
+                .Select(i => new { i.IndustryTagId, i.NameEN, i.NameZH })
                 .ToListAsync();
 
             return Ok(new { message = "List retrieved successfully.", data = list });
@@ -37,7 +37,7 @@ namespace News_Back_end.Controllers
         {
             var tag = await _context.IndustryTags
                 .Where(t => t.IndustryTagId == id)
-                .Select(t => new { t.IndustryTagId, t.Name })
+                .Select(t => new { t.IndustryTagId, t.NameEN, t.NameZH })
                 .FirstOrDefaultAsync();
 
             if (tag == null)
@@ -53,21 +53,23 @@ namespace News_Back_end.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var name = dto.Name?.Trim();
-            if (string.IsNullOrEmpty(name)) return BadRequest(new { message = "Name is required." });
+            var nameEn = dto.NameEN?.Trim();
+            var nameZh = dto.NameZH?.Trim();
+            if (string.IsNullOrEmpty(nameEn) || string.IsNullOrEmpty(nameZh)) return BadRequest(new { message = "Both NameEN and NameZH are required." });
 
             var exists = await _context.IndustryTags
-                .AnyAsync(t => t.Name.ToLower() == name.ToLower());
+                .AnyAsync(t => t.NameEN.ToLower() == nameEn.ToLower() || t.NameZH.ToLower() == nameZh.ToLower());
             if (exists) return BadRequest(new { message = "Industry with the same name already exists." });
 
-            var entity = new IndustryTag { Name = name };
+            var entity = new IndustryTag { NameEN = nameEn, NameZH = nameZh };
             _context.IndustryTags.Add(entity);
             await _context.SaveChangesAsync();
 
             var response = new IndustryResponseDTO
             {
                 IndustryTagId = entity.IndustryTagId,
-                Name = entity.Name
+                NameEN = entity.NameEN,
+                NameZH = entity.NameZH
             };
 
             return CreatedAtAction(nameof(GetById), new { id = entity.IndustryTagId },
@@ -83,19 +85,20 @@ namespace News_Back_end.Controllers
 
             var entity = await _context.IndustryTags.FindAsync(id);
             if (entity == null) return NotFound(new { message = $"Industry with id {id} does not exist." });
-
-            var name = dto.Name?.Trim();
-            if (string.IsNullOrEmpty(name)) return BadRequest(new { message = "Name is required." });
+            var nameEn = dto.NameEN?.Trim();
+            var nameZh = dto.NameZH?.Trim();
+            if (string.IsNullOrEmpty(nameEn) || string.IsNullOrEmpty(nameZh)) return BadRequest(new { message = "Both NameEN and NameZH are required." });
 
             var duplicate = await _context.IndustryTags
-                .AnyAsync(t => t.IndustryTagId != id && t.Name.ToLower() == name.ToLower());
+                .AnyAsync(t => t.IndustryTagId != id && (t.NameEN.ToLower() == nameEn.ToLower() || t.NameZH.ToLower() == nameZh.ToLower()));
             if (duplicate) return BadRequest(new { message = "Another industry with the same name already exists." });
 
-            entity.Name = name;
+            entity.NameEN = nameEn;
+            entity.NameZH = nameZh;
             _context.IndustryTags.Update(entity);
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Successfully updated.", data = new { entity.IndustryTagId, entity.Name } });
+            return Ok(new { message = "Successfully updated.", data = new { entity.IndustryTagId, entity.NameEN, entity.NameZH } });
         }
 
         // DELETE: api/industrytags/5

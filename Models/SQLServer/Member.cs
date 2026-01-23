@@ -30,16 +30,38 @@ namespace News_Back_end.Models.SQLServer
     public class IndustryTag
     {
         public int IndustryTagId { get; set; }
-        public string Name { get; set; } = null!;
+
+        // English name
+        [Required, MaxLength(200)]
+        public string NameEN { get; set; } = null!;
+
+        // Chinese name
+        [Required, MaxLength(200)]
+        public string NameZH { get; set; } = null!;
+
+        // Optional: store both if needed
+        public string? DescriptionEN { get; set; }
+        public string? DescriptionZH { get; set; }
+
         public ICollection<Member> Members { get; set; } = new List<Member>();
     }
 
     public class InterestTag
     {
         public int InterestTagId { get; set; }
-        public string Name { get; set; } = null!;
+
+        [Required, MaxLength(200)]
+        public string NameEN { get; set; } = null!;
+
+        [Required, MaxLength(200)]
+        public string NameZH { get; set; } = null!;
+
+        public string? DescriptionEN { get; set; }
+        public string? DescriptionZH { get; set; }
+
         public ICollection<Member> Members { get; set; } = new List<Member>();
     }
+
 
     public class Member
     {

@@ -50,8 +50,8 @@ namespace News_Back_end.Controllers
  TargetAudience = dto.TargetAudience,
  Status = BroadcastStatus.Draft,
  ScheduledSendAt = dto.ScheduledSendAt,
- CreatedAt = DateTimeOffset.UtcNow,
- UpdatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.Now,
+                UpdatedAt = DateTimeOffset.Now,
  CreatedById = User?.Identity?.Name
  };
 
@@ -78,7 +78,7 @@ namespace News_Back_end.Controllers
  existing.TargetAudience = dto.TargetAudience;
  if (dto.Status.HasValue) existing.Status = dto.Status.Value;
  existing.ScheduledSendAt = dto.ScheduledSendAt;
- existing.UpdatedAt = DateTimeOffset.UtcNow;
+            existing.UpdatedAt = DateTimeOffset.Now;
 
  await _db.SaveChangesAsync();
  return NoContent();
@@ -157,8 +157,8 @@ namespace News_Back_end.Controllers
  Channel = req.Channel ?? BroadcastChannel.Email,
  TargetAudience = req.TargetAudience,
  Status = BroadcastStatus.Draft,
- CreatedAt = DateTimeOffset.UtcNow,
- UpdatedAt = DateTimeOffset.UtcNow,
+                CreatedAt = DateTimeOffset.Now,
+                UpdatedAt = DateTimeOffset.Now,
  CreatedById = User?.Identity?.Name
  };
 

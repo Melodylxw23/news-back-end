@@ -57,6 +57,46 @@ namespace News_Back_end.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "BroadcastMessages",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Title = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Subject = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Body = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    Channel = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    TargetAudience = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(50)", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    UpdatedAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: false),
+                    ScheduledSendAt = table.Column<DateTimeOffset>(type: "datetimeoffset", nullable: true),
+                    CreatedById = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_BroadcastMessages", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "FetchMetrics",
+                columns: table => new
+                {
+                    FetchMetricId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    SourceId = table.Column<int>(type: "int", nullable: false),
+                    Timestamp = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Success = table.Column<bool>(type: "bit", nullable: false),
+                    ItemsFetched = table.Column<int>(type: "int", nullable: false),
+                    DurationMs = table.Column<int>(type: "int", nullable: false),
+                    ErrorMessage = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FetchMetrics", x => x.FetchMetricId);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "IndustryTags",
                 columns: table => new
                 {
@@ -279,7 +319,11 @@ namespace News_Back_end.Migrations
                     PublishedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
                     CrawledAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     SourceId = table.Column<int>(type: "int", nullable: true),
-                    SummaryId = table.Column<int>(type: "int", nullable: true),
+                    SummaryEN = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    SummaryZH = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    FullContentEN = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    FullContentZH = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    DescriptionSettingId = table.Column<int>(type: "int", nullable: true),
                     NLPKeywords = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     NamedEntities = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     SentimentScore = table.Column<double>(type: "float", nullable: true),
@@ -296,6 +340,41 @@ namespace News_Back_end.Migrations
                         column: x => x.SourceId,
                         principalTable: "Sources",
                         principalColumn: "SourceId");
+                });
+
+            migrationBuilder.CreateTable(
+                name: "SourceDescriptionSettings",
+                columns: table => new
+                {
+                    SettingId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    SourceId = table.Column<int>(type: "int", nullable: false),
+                    TranslateOnFetch = table.Column<bool>(type: "bit", nullable: false),
+                    SummaryWordCount = table.Column<int>(type: "int", nullable: false),
+                    SummaryTone = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    SummaryFormat = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CustomKeyPoints = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    MaxArticlesPerFetch = table.Column<int>(type: "int", nullable: false),
+                    IncludeOriginalChinese = table.Column<bool>(type: "bit", nullable: false),
+                    IncludeEnglishSummary = table.Column<bool>(type: "bit", nullable: false),
+                    IncludeChineseSummary = table.Column<bool>(type: "bit", nullable: false),
+                    MinArticleLength = table.Column<int>(type: "int", nullable: false),
+                    SummaryFocus = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    SentimentAnalysisEnabled = table.Column<bool>(type: "bit", nullable: false),
+                    HighlightEntities = table.Column<bool>(type: "bit", nullable: false),
+                    SummaryLanguage = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_SourceDescriptionSettings", x => x.SettingId);
+                    table.ForeignKey(
+                        name: "FK_SourceDescriptionSettings_Sources_SourceId",
+                        column: x => x.SourceId,
+                        principalTable: "Sources",
+                        principalColumn: "SourceId",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -406,6 +485,11 @@ namespace News_Back_end.Migrations
                 name: "IX_NewsArticles_SourceId",
                 table: "NewsArticles",
                 column: "SourceId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_SourceDescriptionSettings_SourceId",
+                table: "SourceDescriptionSettings",
+                column: "SourceId");
         }
 
         /// <inheritdoc />
@@ -427,6 +511,12 @@ namespace News_Back_end.Migrations
                 name: "AspNetUserTokens");
 
             migrationBuilder.DropTable(
+                name: "BroadcastMessages");
+
+            migrationBuilder.DropTable(
+                name: "FetchMetrics");
+
+            migrationBuilder.DropTable(
                 name: "MemberIndustryTags");
 
             migrationBuilder.DropTable(
@@ -434,6 +524,9 @@ namespace News_Back_end.Migrations
 
             migrationBuilder.DropTable(
                 name: "NewsArticles");
+
+            migrationBuilder.DropTable(
+                name: "SourceDescriptionSettings");
 
             migrationBuilder.DropTable(
                 name: "TranslationAudits");

@@ -1,15 +1,18 @@
-using Microsoft.AspNetCore.Mvc;
-using News_Back_end.Models.SQLServer;
-using News_Back_end.DTOs;
-using Microsoft.EntityFrameworkCore;
-using News_Back_end.Services;
 using HtmlAgilityPack;
-using System.Net;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.AspNetCore.Authorization;
-using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using News_Back_end.DTOs;
+using News_Back_end.Models.SQLServer;
+using News_Back_end.Services;
 using System;
+using System.Diagnostics;
+using System.Text.Json;
+using System.Linq;
+using System.Net;
+using System.Threading.Tasks;
+using static News_Back_end.Controllers.SourcesController;
 
 namespace News_Back_end.Controllers
 {
@@ -21,13 +24,15 @@ namespace News_Back_end.Controllers
         private readonly CrawlerFactory _factory;
         private readonly ITranslationService? _translationService;
         private readonly IServiceProvider _services;
+        private readonly ArticleProcessor _processor;
 
-        public ArticlesController(MyDBContext db, CrawlerFactory factory, IServiceProvider services, ITranslationService? translationService = null)
+        public ArticlesController(MyDBContext db, CrawlerFactory factory, IServiceProvider services, ArticleProcessor processor, ITranslationService? translationService = null)
         {
             _db = db;
             _factory = factory;
             _services = services;
             _translationService = translationService;
+            _processor = processor;
         }
 
         // Clean HTML and decode entities to plain text
@@ -47,9 +52,7 @@ namespace News_Back_end.Controllers
             }
         }
 
-        // DTOs reused from NewsArticlesController
-        public class TranslatePreviewDto { public string TargetLanguage { get; set; } = "en"; }
-        public class TranslateAndSaveDto { public string TargetLanguage { get; set; } = "en"; public string? EditedTranslation { get; set; } = null; public bool AutoTranslateIfNoEdit { get; set; } = true; }
+      
 
         // GET: /api/articles/recent?limit=20
         [HttpGet("recent")]
@@ -62,7 +65,8 @@ namespace News_Back_end.Controllers
                 .OrderByDescending(a => a.PublishedAt ?? a.CreatedAt)
                 .Select(a => new ArticleDto(
                     a.NewsArticleId,
-                    a.Title,
+                    a.TitleZH,
+                    a.TitleEN,
                     a.OriginalContent ?? string.Empty,
                     a.OriginalLanguage ?? string.Empty,
                     a.TranslationLanguage,
@@ -72,7 +76,11 @@ namespace News_Back_end.Controllers
                     a.CrawledAt,
                     a.SourceId,
                     a.TranslationSavedBy,
-                    a.TranslationSavedAt));
+                    a.TranslationSavedAt,
+                    a.FullContentEN,
+                    a.FullContentZH,
+                    a.SummaryEN,
+                    a.SummaryZH));
 
             if (limit.HasValue)
             {
@@ -93,230 +101,7 @@ namespace News_Back_end.Controllers
             return Ok(dtos);
         }
 
-        // POST: /api/articles/{id}/translate-preview
-        [HttpPost("{id:int}/translate-preview")]
-        [Authorize(Roles = "Consultant")]
-        public async Task<IActionResult> TranslatePreview(int id, [FromBody] TranslatePreviewDto dto)
-        {
-            var article = await _db.NewsArticles.FindAsync(id);
-            if (article == null) return NotFound();
-
-            var translator = _translationService ?? _services.GetService<ITranslationService>();
-            if (translator == null) return BadRequest("Translation service not configured.");
-
-            var target = string.IsNullOrWhiteSpace(dto.TargetLanguage) ? "en" : dto.TargetLanguage;
-            var sourceText = CleanHtml(article.OriginalContent ?? string.Empty);
-            var suggested = await translator.TranslateAsync(sourceText, target);
-
-            return Ok(new { Original = sourceText, Suggested = suggested, TargetLanguage = target });
-        }
-
-        // POST: /api/articles/{id}/translate-and-save
-        [HttpPost("{id:int}/translate-and-save")]
-        [Authorize(Roles = "Consultant")]
-        public async Task<IActionResult> TranslateAndSave(int id, [FromBody] TranslateAndSaveDto dto)
-        {
-            var article = await _db.NewsArticles.FindAsync(id);
-            if (article == null) return NotFound();
-
-            var sourceText = CleanHtml(article.OriginalContent ?? string.Empty);
-
-            string finalText;
-            if (!string.IsNullOrWhiteSpace(dto.EditedTranslation))
-            {
-                // edited translation provided by user ?save as Pending for review
-                finalText = dto.EditedTranslation!;
-
-                if (string.Equals(finalText?.Trim(), sourceText?.Trim(), StringComparison.Ordinal))
-                {
-                    try
-                    {
-                        _db.TranslationAudits.Add(new Models.SQLServer.TranslationAudit
-                        {
-                            NewsArticleId = article.NewsArticleId,
-                            Action = "Skipped",
-                            PerformedBy = User?.Identity?.Name ?? "unknown",
-                            PerformedAt = DateTime.Now,
-                            Details = dto.TargetLanguage
-                        });
-                        await _db.SaveChangesAsync();
-                    }
-                    catch { }
-
-                    return Conflict("Translation matches original content; not saved.");
-                }
-
-                article.TranslatedContent = finalText;
-                article.TranslationLanguage = string.IsNullOrWhiteSpace(dto.TargetLanguage) ? "en" : dto.TargetLanguage;
-                article.TranslationStatus = Models.SQLServer.TranslationStatus.Pending;
-                article.TranslationReviewedBy = null;
-                article.TranslationReviewedAt = null;
-                article.TranslationSavedBy = User?.Identity?.Name ?? "unknown";
-                article.TranslationSavedAt = DateTime.Now;
-                article.UpdatedAt = DateTime.Now;
-                await _db.SaveChangesAsync();
-            }
-            else if (dto.AutoTranslateIfNoEdit)
-            {
-                var translator = _translationService ?? _services.GetService<ITranslationService>();
-                if (translator == null) return BadRequest("Translation service not configured.");
-                var target = string.IsNullOrWhiteSpace(dto.TargetLanguage) ? "en" : dto.TargetLanguage;
-
-                // mark InProgress and persist so stats/clients can see translation is running
-                article.TranslationLanguage = target;
-                article.TranslationStatus = Models.SQLServer.TranslationStatus.InProgress;
-                article.TranslationSavedBy = User?.Identity?.Name ?? "system";
-                article.TranslationSavedAt = DateTime.Now;
-                article.UpdatedAt = DateTime.Now;
-                await _db.SaveChangesAsync();
-
-                // perform translation
-                finalText = await translator.TranslateAsync(sourceText, target);
-
-                // guard: don't persist if translated text equals cleaned original
-                if (string.Equals(finalText?.Trim(), sourceText?.Trim(), StringComparison.Ordinal))
-                {
-                    try
-                    {
-                        _db.TranslationAudits.Add(new Models.SQLServer.TranslationAudit
-                        {
-                            NewsArticleId = article.NewsArticleId,
-                            Action = "Skipped",
-                            PerformedBy = User?.Identity?.Name ?? "system",
-                            PerformedAt = DateTime.Now,
-                            Details = target
-                        });
-                        await _db.SaveChangesAsync();
-                    }
-                    catch { }
-
-                    // revert InProgress to Pending with no content
-                    article.TranslatedContent = null;
-                    article.TranslationStatus = Models.SQLServer.TranslationStatus.Pending;
-                    article.TranslationReviewedBy = null;
-                    article.TranslationReviewedAt = null;
-                    article.UpdatedAt = DateTime.Now;
-                    await _db.SaveChangesAsync();
-
-                    return Conflict("Translation matches original content; not saved.");
-                }
-
-                // persist translated content and mark Pending for review
-                article.TranslatedContent = finalText;
-                article.TranslationStatus = Models.SQLServer.TranslationStatus.Pending;
-                article.TranslationReviewedBy = null;
-                article.TranslationReviewedAt = null;
-                article.TranslationSavedBy = User?.Identity?.Name ?? "system";
-                article.TranslationSavedAt = DateTime.Now;
-                article.UpdatedAt = DateTime.Now;
-                await _db.SaveChangesAsync();
-            }
-            else
-            {
-                return BadRequest("No edited translation and auto-translate disabled.");
-            }
-
-            // record audit
-            try
-            {
-                _db.TranslationAudits.Add(new Models.SQLServer.TranslationAudit
-                {
-                    NewsArticleId = article.NewsArticleId,
-                    Action = "Saved",
-                    PerformedBy = article.TranslationSavedBy ?? "unknown",
-                    PerformedAt = DateTime.Now,
-                    Details = article.TranslationLanguage
-                });
-                await _db.SaveChangesAsync();
-            }
-            catch { /* non-fatal */ }
-
-            return Ok(new
-            {
-                article.NewsArticleId,
-                article.TranslationStatus,
-                article.TranslationLanguage,
-                TranslatedContent = article.TranslatedContent,
-                SavedBy = article.TranslationSavedBy,
-                SavedAt = article.TranslationSavedAt
-            });
-        }
-
-
-        // Approve a saved translation and mark as Reviewed
-        // POST: api/articles/{id}/translation/approve
-        [HttpPost("{id:int}/translation/approve")]
-        [Authorize(Roles = "Consultant")]
-        public async Task<IActionResult> ApproveTranslation(int id)
-        {
-            var a = await _db.NewsArticles.FindAsync(id);
-            if (a == null) return NotFound();
-            if (string.IsNullOrWhiteSpace(a.TranslatedContent)) return BadRequest("No translation available to approve.");
-
-            a.TranslationStatus = Models.SQLServer.TranslationStatus.Translated;
-            a.TranslationReviewedBy = User?.Identity?.Name ?? "unknown";
-            a.TranslationReviewedAt = DateTime.Now;
-            a.UpdatedAt = DateTime.Now;
-            await _db.SaveChangesAsync();
-
-            // audit approve
-            try
-            {
-                _db.TranslationAudits.Add(new Models.SQLServer.TranslationAudit
-                {
-                    NewsArticleId = a.NewsArticleId,
-                    Action = "Approved",
-                    PerformedBy = a.TranslationReviewedBy ?? "unknown",
-                    PerformedAt = DateTime.Now,
-                    Details = a.TranslationLanguage
-                });
-                await _db.SaveChangesAsync();
-            }
-            catch { }
-
-            // Automatically push approved article to Content Creation (Active Articles)
-            bool pushedToContentCreation = false;
-            string? pushError = null;
-            try
-            {
-                var existingLabel = await _db.ArticleLabels.FirstOrDefaultAsync(al => al.NewsId == a.NewsArticleId);
-                if (existingLabel == null)
-                {
-                    var articleLabel = new ArticleLabel
-                    {
-                        NewsId = a.NewsArticleId,
-                        WorkflowStatus = "Active",
-                        AddedAt = DateTime.Now,
-                        AddedBy = "System-AutoPush",
-                        Notes = "Automatically added after translation approval"
-                    };
-                    _db.ArticleLabels.Add(articleLabel);
-                    await _db.SaveChangesAsync();
-                    pushedToContentCreation = true;
-                }
-                else
-                {
-                    pushError = "Article already exists in Content Creation workflow";
-                }
-            }
-            catch (Exception ex)
-            {
-                pushError = ex.Message;
-                Console.WriteLine($"Failed to auto-push article {a.NewsArticleId} to Content Creation: {ex.Message}");
-            }
-
-            return Ok(new
-            {
-                a.NewsArticleId,
-                a.TranslationStatus,
-                a.TranslationLanguage,
-                TranslatedContent = a.TranslatedContent,
-                ReviewedBy = a.TranslationReviewedBy,
-                ReviewedAt = a.TranslationReviewedAt,
-                PushedToContentCreation = pushedToContentCreation,
-                PushError = pushError
-            });
-        }
+        
 
         [HttpGet]
         public async Task<IActionResult> Get([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? status = null)
@@ -339,7 +124,8 @@ namespace News_Back_end.Controllers
 
             var dtos = items.Select(a => new ArticleDto(
                 a.NewsArticleId,
-                a.Title,
+                a.TitleZH,
+                a.TitleEN,
                 a.OriginalContent,
                 a.OriginalLanguage,
                 a.TranslationLanguage,
@@ -349,7 +135,11 @@ namespace News_Back_end.Controllers
                 a.CrawledAt,
                 a.SourceId,
                 a.TranslationSavedBy,
-                a.TranslationSavedAt)).ToList();
+                a.TranslationSavedAt,
+                a.FullContentEN,
+                a.FullContentZH,
+                a.SummaryEN,
+                a.SummaryZH)).ToList();
 
             return Ok(new PagedResult<ArticleDto> { Page = page, PageSize = pageSize, Total = total, Items = dtos });
         }
@@ -363,9 +153,18 @@ namespace News_Back_end.Controllers
             if (string.IsNullOrWhiteSpace(q)) return BadRequest("query required");
 
             var normalized = q.Trim();
+
             var baseQ = _db.NewsArticles
                 .AsNoTracking()
-                .Where(a => a.Title.Contains(normalized) || a.OriginalContent.Contains(normalized));
+                .Where(a =>
+                    (a.TitleZH != null && a.TitleZH.Contains(normalized)) ||
+                    (a.TitleEN != null && a.TitleEN.Contains(normalized)) ||
+                    (a.OriginalContent != null && a.OriginalContent.Contains(normalized)) ||
+                    (a.FullContentEN != null && a.FullContentEN.Contains(normalized)) ||
+                    (a.FullContentZH != null && a.FullContentZH.Contains(normalized)) ||
+                    (a.SummaryEN != null && a.SummaryEN.Contains(normalized)) ||
+                    (a.SummaryZH != null && a.SummaryZH.Contains(normalized))
+                );
 
             var total = await baseQ.LongCountAsync();
             var items = await baseQ.OrderByDescending(a => a.PublishedAt ?? a.CreatedAt)
@@ -373,7 +172,8 @@ namespace News_Back_end.Controllers
 
             var dtos = items.Select(a => new ArticleDto(
                 a.NewsArticleId,
-                a.Title,
+                a.TitleZH,
+                a.TitleEN,
                 a.OriginalContent,
                 a.OriginalLanguage,
                 a.TranslationLanguage,
@@ -381,7 +181,13 @@ namespace News_Back_end.Controllers
                 a.SourceURL,
                 a.PublishedAt,
                 a.CrawledAt,
-                a.SourceId)).ToList();
+                a.SourceId,
+                a.TranslationSavedBy,
+                a.TranslationSavedAt,
+                a.FullContentEN,
+                a.FullContentZH,
+                a.SummaryEN,
+                a.SummaryZH)).ToList();
 
             return Ok(new PagedResult<ArticleDto> { Page = page, PageSize = pageSize, Total = total, Items = dtos });
         }
@@ -397,7 +203,8 @@ namespace News_Back_end.Controllers
 
             var dto = new ArticleDto(
                 a.NewsArticleId,
-                a.Title,
+                a.TitleZH,
+                a.TitleEN,
                 SelectContentForLanguage(a, lang),
                 a.OriginalLanguage,
                 a.TranslationLanguage,
@@ -405,9 +212,29 @@ namespace News_Back_end.Controllers
                 a.SourceURL,
                 a.PublishedAt,
                 a.CrawledAt,
-                a.SourceId);
+                a.SourceId,
+                a.TranslationSavedBy,
+                a.TranslationSavedAt,
+                a.FullContentEN,
+                a.FullContentZH,
+                a.SummaryEN,
+                a.SummaryZH);
 
-            return Ok(new { Article = dto, OriginalContent = a.OriginalContent, TranslatedContent = a.TranslatedContent, a.NLPKeywords, a.NamedEntities, a.SentimentScore });
+            return Ok(new
+            {
+                Article = dto,
+                OriginalContent = a.OriginalContent,
+                TranslatedContent = a.TranslatedContent,
+                FullContentEN = a.FullContentEN,
+                FullContentZH = a.FullContentZH,
+                SummaryEN = a.SummaryEN,
+                SummaryZH = a.SummaryZH,
+                TitleEN = a.TitleEN,
+                TitleZH = a.TitleZH,
+                a.NLPKeywords,
+                a.NamedEntities,
+                a.SentimentScore
+            });
         }
 
 
@@ -480,52 +307,315 @@ namespace News_Back_end.Controllers
             return Ok(new { total, pending, inProgress, translated, bySource });
         }
 
-        // GET: api/articles/review?status=inprogress|pending|translated&auto=true
-        // Returns articles that need review. Set auto=true to restrict to crawler auto-translated items.
-        [HttpGet("review")]
+        
+
+        
+        [HttpPost("fetchArticles")]
         [Authorize(Roles = "Consultant")]
-        public async Task<IActionResult> Review([FromQuery] string? status = null, [FromQuery] bool? auto = null)
+
+        public async Task<IActionResult> Fetch([FromBody] JsonElement body, [FromQuery] bool debug = false)
         {
-            var q = _db.NewsArticles.AsNoTracking().AsQueryable();
+            // support flexible client payloads: either raw FetchRequestDto or wrapped { "dto": { ... } }
+            var jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            News_Back_end.DTOs.FetchRequestDto dto;
+            try
+            {
+                var dtoElem = body;
+                if (body.ValueKind == JsonValueKind.Object && body.TryGetProperty("dto", out var wrapper))
+                    dtoElem = wrapper;
 
-            // filter by status if provided, otherwise default to items needing review
-            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<Models.SQLServer.TranslationStatus>(status, true, out var parsed))
-            {
-                q = q.Where(a => a.TranslationStatus == parsed);
+                dto = JsonSerializer.Deserialize<News_Back_end.DTOs.FetchRequestDto>(dtoElem.GetRawText(), jsonOptions)
+                      ?? new News_Back_end.DTOs.FetchRequestDto();
             }
-            else
+            catch (JsonException je)
             {
-                // default: include InProgress and Pending
-                q = q.Where(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.InProgress
-                    || a.TranslationStatus == Models.SQLServer.TranslationStatus.Pending);
+                return BadRequest(new { error = "Invalid request body", detail = je.Message });
             }
+            var sourcesQuery = _db.Sources.AsQueryable();
+            if (dto.SourceIds != null && dto.SourceIds.Count > 0)
+            {
+                sourcesQuery = sourcesQuery.Where(s => dto.SourceIds.Contains(s.SourceId));
+            }
+            var sources = await sourcesQuery.Where(s => s.IsActive).ToListAsync();
 
-            if (auto.HasValue)
+            var results = new List<object>();
+
+            foreach (var src in sources)
             {
-                if (auto.Value)
-                    q = q.Where(a => a.TranslationSavedBy == "crawler");
+                // Load description settings for this source (allow per-request override)
+                SourceDescriptionSetting? settings = null;
+                if (dto.SourceSettingOverride != null)
+                {
+                    var o = dto.SourceSettingOverride;
+                    settings = new SourceDescriptionSetting
+                    {
+                        TranslateOnFetch = o.TranslateOnFetch,
+                        SummaryWordCount = o.SummaryWordCount,
+                        SummaryTone = o.SummaryTone ?? "neutral",
+                        SummaryFormat = o.SummaryFormat ?? "paragraph",
+                        CustomKeyPoints = o.CustomKeyPoints,
+                        MaxArticlesPerFetch = o.MaxArticlesPerFetch,
+                        IncludeOriginalChinese = o.IncludeOriginalChinese,
+                        IncludeEnglishSummary = o.IncludeEnglishSummary,
+                        IncludeChineseSummary = o.IncludeChineseSummary,
+                        MinArticleLength = o.MinArticleLength,
+                        SummaryFocus = o.SummaryFocus,
+                        SentimentAnalysisEnabled = o.SentimentAnalysisEnabled,
+                        HighlightEntities = o.HighlightEntities,
+                        SummaryLanguage = o.SummaryLanguage ?? "EN"
+                    };
+                }
                 else
-                    q = q.Where(a => a.TranslationSavedBy == null || a.TranslationSavedBy != "crawler");
+                {
+                    settings = await _db.SourceDescriptionSettings
+                        .FirstOrDefaultAsync(x => x.SourceId == src.SourceId);
+                }
+
+                // If no settings are configured for this source, use permissive defaults so fetch returns articles
+                if (settings == null)
+                {
+                    settings = new SourceDescriptionSetting
+                    {
+                        MinArticleLength = 0, // accept short items
+                        MaxArticlesPerFetch = 100,
+                        TranslateOnFetch = true,
+                        IncludeEnglishSummary = true,
+                        IncludeChineseSummary = true,
+                        SummaryWordCount = 150,
+                        SummaryTone = "neutral",
+                        SummaryFormat = "paragraph"
+                    };
+                }
+
+                // Try unified crawler first (combines RSS/API/HTML) then fallback to type-specific crawler
+                List<CrawlerDTO> rawArticles = new List<CrawlerDTO>();
+                List<ArticleDtos>? unifiedProcessed = null;
+                var sw = Stopwatch.StartNew();
+                string? crawlError = null;
+
+                var unified = _services.GetService(typeof(UnifiedCrawlerService)) as UnifiedCrawlerService;
+                if (unified != null)
+                {
+                    try
+                    {
+                        unifiedProcessed = await unified.CrawlAsync(src, settings ?? new SourceDescriptionSetting());
+                        // convert for diagnostics
+                        rawArticles = (unifiedProcessed ?? new List<ArticleDtos>())
+                            .Select(a => new CrawlerDTO { Title = a.TitleZH ?? a.TitleEN, Content = a.OriginalContent, SourceURL = a.SourceURL, PublishedDate = a.PublishedAt, OriginalLanguage = a.OriginalLanguage })
+                            .ToList();
+                        Console.WriteLine($"[Articles.Fetch][Unified] source={src.SourceId} name={src.Name} items={rawArticles.Count}");
+                        for (int i = 0; i < Math.Min(5, rawArticles.Count); i++)
+                        {
+                            var r = rawArticles[i];
+                            Console.WriteLine($"[Articles.Fetch][Unified] sample[{i}] title={r.Title ?? "(no title)"} url={r.SourceURL ?? "(null)"} len={ (r.Content?.Length ?? 0) }");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        crawlError = ex.Message;
+                        rawArticles = new List<CrawlerDTO>();
+                        Console.WriteLine($"[Articles.Fetch][Unified] error for {src.Name}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        if (sw.IsRunning) sw.Stop();
+                    }
+                }
+                else
+                {
+                    // fallback to factory-created crawler
+                    var crawler = _factory.CreateCrawler(src.Type.ToString());
+                    try
+                    {
+                        rawArticles = await crawler.CrawlAsync(src) ?? new List<CrawlerDTO>();
+                        Console.WriteLine($"[Articles.Fetch] source={src.SourceId} name={src.Name} rawArticles={rawArticles.Count}");
+                        for (int i = 0; i < Math.Min(5, rawArticles.Count); i++)
+                        {
+                            var r = rawArticles[i];
+                            Console.WriteLine($"[Articles.Fetch] sample[{i}] title={r.Title ?? "(no title)"} url={r.SourceURL ?? "(null)"} len={ (r.Content?.Length ?? 0) }");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        crawlError = ex.Message;
+                        rawArticles = new List<CrawlerDTO>();
+                        try
+                        {
+                            sw.Stop();
+                            var metric = new FetchMetric
+                            {
+                                SourceId = src.SourceId,
+                                Timestamp = DateTime.Now,
+                                Success = false,
+                                ItemsFetched = 0,
+                                DurationMs = (int)sw.ElapsedMilliseconds,
+                                ErrorMessage = crawlError
+                            };
+                            _db.FetchMetrics.Add(metric);
+                            await _db.SaveChangesAsync();
+                        }
+                        catch { }
+
+                        results.Add(new { src.SourceId, src.Name, error = ex.Message });
+                        continue;
+                    }
+                    finally
+                    {
+                        if (sw.IsRunning) sw.Stop();
+                    }
+                }
+
+                // record successful crawl metric (best-effort)
+                try
+                {
+                    var metric = new FetchMetric
+                    {
+                        SourceId = src.SourceId,
+                        Timestamp = DateTime.Now,
+                        Success = string.IsNullOrWhiteSpace(crawlError),
+                        ItemsFetched = rawArticles?.Count ?? 0,
+                        DurationMs = (int)sw.ElapsedMilliseconds,
+                        ErrorMessage = crawlError
+                    };
+                    _db.FetchMetrics.Add(metric);
+                    await _db.SaveChangesAsync();
+                }
+                catch { }
+
+                var processedArticles = new List<ArticleDtos>();
+                var entitiesToSave = new List<NewsArticle>();
+                int updatedCount = 0;
+
+                foreach (var raw in rawArticles.Take(settings?.MaxArticlesPerFetch ?? 10))
+                {
+                    try
+                    {
+                        var article = await _processor.ProcessArticle(raw, settings);
+                        if (article == null) continue;
+
+                        // persist to DB as NewsArticle (defer SaveChanges until after loop)
+                        var entity = new NewsArticle
+                        {
+                            TitleZH = article.TitleZH ?? string.Empty,
+                            TitleEN = article.TitleEN,
+                            OriginalContent = article.OriginalContent ?? string.Empty,
+                            TranslatedContent = article.TranslatedContent,
+                            FullContentEN = article.FullContentEN,
+                            FullContentZH = article.FullContentZH,
+                            SummaryEN = article.SummaryEN,
+                            SummaryZH = article.SummaryZH,
+                            SourceURL = article.SourceURL ?? string.Empty,
+                            PublishedAt = article.PublishedAt == default ? DateTime.Now : article.PublishedAt,
+                            OriginalLanguage = string.IsNullOrWhiteSpace(article.OriginalLanguage) ? src.Language.ToString() : article.OriginalLanguage,
+                            SourceId = src.SourceId,
+                            CreatedAt = DateTime.Now,
+                            DescriptionSettingId = settings?.SettingId
+                        };
+
+                        // mark as auto-translated/summarized by crawler
+                        try
+                        {
+                            var origLang = (entity.OriginalLanguage ?? "").Trim().ToLowerInvariant();
+                            entity.TranslationLanguage = origLang.StartsWith("zh") ? "en" : "zh";
+                            entity.TranslationStatus = Models.SQLServer.TranslationStatus.Translated;
+                            entity.TranslationSavedBy = "crawler";
+                            entity.TranslationSavedAt = DateTime.Now;
+                            entity.TranslationReviewedBy = "crawler";
+                            entity.TranslationReviewedAt = DateTime.Now;
+                        }
+                        catch { }
+
+                        // handle duplicates: update existing article when re-fetching, otherwise insert
+                        if (!string.IsNullOrWhiteSpace(entity.SourceURL))
+                        {
+                            var existing = await _db.NewsArticles.FirstOrDefaultAsync(x => x.SourceURL == entity.SourceURL);
+                            if (existing != null && !dto.Force)
+                            {
+                                // decide whether to update: prefer newer PublishedAt or different content
+                                var existingPub = existing.PublishedAt ?? DateTime.MinValue;
+                                var incomingPub = entity.PublishedAt ?? DateTime.MinValue;
+                                var contentChanged = !string.Equals(existing.OriginalContent ?? string.Empty, entity.OriginalContent ?? string.Empty, StringComparison.Ordinal);
+                                var newer = incomingPub > existingPub;
+
+                                if (newer || contentChanged)
+                                {
+                                    existing.TitleZH = entity.TitleZH;
+                                    existing.TitleEN = entity.TitleEN;
+                                    existing.OriginalContent = entity.OriginalContent;
+                                    existing.TranslatedContent = entity.TranslatedContent;
+                                    existing.FullContentEN = entity.FullContentEN;
+                                    existing.FullContentZH = entity.FullContentZH;
+                                    existing.SummaryEN = entity.SummaryEN;
+                                    existing.SummaryZH = entity.SummaryZH;
+                                    existing.PublishedAt = entity.PublishedAt ?? existing.PublishedAt;
+                                    existing.OriginalLanguage = entity.OriginalLanguage;
+                                    existing.UpdatedAt = DateTime.Now;
+                                    try
+                                    {
+                                        await _db.SaveChangesAsync();
+                                        updatedCount++;
+                                    }
+                                    catch { }
+                                    processedArticles.Add(article);
+                                }
+                                else
+                                {
+                                    // no update needed; skip
+                                    continue;
+                                }
+
+                                continue;
+                            }
+                        }
+
+                        entitiesToSave.Add(entity);
+                        processedArticles.Add(article);
+                    }
+                    catch (Exception ex)
+                    {
+                        // log and continue with next article
+                        Console.WriteLine($"Error processing article from {src.Name}: {ex.Message}");
+                    }
+                }
+
+                if (entitiesToSave.Count > 0)
+                {
+                    Console.WriteLine($"[Articles.Fetch] source={src.SourceId} adding={entitiesToSave.Count} articles to DB");
+                    _db.NewsArticles.AddRange(entitiesToSave);
+                    src.LastCrawledAt = DateTime.Now;
+                    await _db.SaveChangesAsync();
+                }
+
+                var entry = new
+                {
+                    src.SourceId,
+                    src.Name,
+                    fetched = processedArticles.Count,
+                    added = entitiesToSave.Count,
+                    articles = processedArticles
+                };
+
+                if (debug)
+                {
+                    var samples = rawArticles.Take(5).Select(r => new { r.Title, r.SourceURL, Length = r.Content?.Length ?? 0 }).ToList();
+                    results.Add(new
+                    {
+                        SourceId = src.SourceId,
+                        Name = src.Name,
+                        fetched = processedArticles.Count,
+                        added = entitiesToSave.Count,
+                        articles = processedArticles,
+                        rawCount = rawArticles.Count,
+                        samples
+                    });
+                }
+                else
+                {
+                    results.Add(entry);
+                }
             }
 
-            var items = await q.OrderByDescending(a => a.PublishedAt ?? a.CreatedAt)
-                .Take(1000)
-                .Select(a => new ArticleDto(
-                    a.NewsArticleId,
-                    a.Title,
-                    a.OriginalContent,
-                    a.OriginalLanguage,
-                    a.TranslationLanguage,
-                    a.TranslationStatus,
-                    a.SourceURL,
-                    a.PublishedAt,
-                    a.CrawledAt,
-                    a.SourceId,
-                    a.TranslationSavedBy,
-                    a.TranslationSavedAt))
-                .ToListAsync();
-
-            return Ok(items);
+            return Ok(results);
         }
     }
 }

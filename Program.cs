@@ -185,6 +185,10 @@ builder.Services.AddHttpClient<HTMLCrawlerService>(c =>
 });
 
 builder.Services.AddScoped<CrawlerFactory, CrawlersFactory>();
+// Register unified crawler that composes RSS/API/HTML crawlers and processor
+builder.Services.AddScoped<UnifiedCrawlerService>();
+// Register ArticleProcessor for processing fetched articles
+builder.Services.AddScoped<ArticleProcessor>();
 
 // Hosted background crawler
 builder.Services.AddHostedService<NewsCrawlerBackgroundService>();
@@ -199,7 +203,8 @@ if (!string.IsNullOrWhiteSpace(openAIApiKey))
     {
         c.BaseAddress = new Uri(openAIBase);
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIApiKey}");
-        c.Timeout = TimeSpan.FromSeconds(30);
+        // Increase default timeout to accommodate longer OpenAI calls
+        c.Timeout = TimeSpan.FromSeconds(120);
     });
 }
 
@@ -220,13 +225,7 @@ if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
 var openAIContentCreationKey = builder.Configuration["OpenAIContentCreation:ApiKey"];
 if (!string.IsNullOrWhiteSpace(openAIContentCreationKey))
 {
-    var openAIContentCreationBase = builder.Configuration["OpenAIContentCreation:BaseUrl"] ?? "https://api.openai.com/";
-    builder.Services.AddHttpClient<IContentCreationService, OpenAIContentCreationService>(c =>
-    {
-        c.BaseAddress = new Uri(openAIContentCreationBase);
-        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIContentCreationKey}");
-        c.Timeout = TimeSpan.FromSeconds(30);
-    });
+    // legacy content creation registration removed - Summarization handled by ITranslationService.SummarizeAsync
 }
 
 builder.Services.AddAuthorization();
@@ -298,13 +297,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// Serve static files from GeneratedAssets folder for PDF/PPT downloads
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-        Path.Combine(Directory.GetCurrentDirectory(), "GeneratedAssets")),
-    RequestPath = "/GeneratedAssets"
-});
+app.UseStaticFiles();
 
 app.UseCors();
 

@@ -4,5 +4,6 @@ namespace News_Back_end.Services
     {
         Task<string> TranslateAsync(string text, string targetLanguage);
         Task<string> DetectLanguageAsync(string text);
+        Task<string> SummarizeAsync(string text, Models.SQLServer.SourceDescriptionSetting? settings = null);
     }
 }

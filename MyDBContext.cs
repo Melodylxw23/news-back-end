@@ -21,8 +21,9 @@ namespace News_Back_end
         public DbSet<NewsArticle> NewsArticles { get; set; } = null!;
         public DbSet<TranslationAudit> TranslationAudits { get; set; } = null!;
         public DbSet<BroadcastMessage> BroadcastMessages { get; set; } = null!;
-        public DbSet<ArticleLabel> ArticleLabels { get; set; } = null!;
-        public DbSet<Summary> Summaries { get; set; } = null!;
+        public DbSet<SourceDescriptionSetting> SourceDescriptionSettings { get; set; } = null!;
+        public DbSet<FetchMetric> FetchMetrics { get; set; } = null!;
+        // ArticleLabel removed - not used
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -88,6 +89,7 @@ namespace News_Back_end
                 .HasConversion<string>()
                 .HasColumnType("nvarchar(50)");
         }
+
 
         // Ensure consistent semantics: if a translation was saved by the crawler, mark status InProgress
         private void ApplyCrawlerTranslationRules()
