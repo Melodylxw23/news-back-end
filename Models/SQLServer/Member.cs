@@ -44,6 +44,9 @@ namespace News_Back_end.Models.SQLServer
         public string? DescriptionZH { get; set; }
 
         public ICollection<Member> Members { get; set; } = new List<Member>();
+
+        // allow linking PublicationDrafts to tags
+        public ICollection<PublicationDraft> PublicationDrafts { get; set; } = new List<PublicationDraft>();
     }
 
     public class InterestTag
@@ -60,6 +63,9 @@ namespace News_Back_end.Models.SQLServer
         public string? DescriptionZH { get; set; }
 
         public ICollection<Member> Members { get; set; } = new List<Member>();
+
+        // allow linking PublicationDrafts to tags
+        public ICollection<PublicationDraft> PublicationDrafts { get; set; } = new List<PublicationDraft>();
     }
 
 

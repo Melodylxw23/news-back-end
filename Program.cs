@@ -208,6 +208,19 @@ if (!string.IsNullOrWhiteSpace(openAIApiKey))
     });
 }
 
+// Image generation service (optional) - use separate config section OpenAIHeroImageCreation
+var openAIHeroKey = builder.Configuration["OpenAIHeroImageCreation:ApiKey"];
+var openAIHeroBase = builder.Configuration["OpenAIHeroImageCreation:BaseUrl"] ?? openAIBase;
+if (!string.IsNullOrWhiteSpace(openAIHeroKey))
+{
+    builder.Services.AddHttpClient<IImageGenerationService, OpenAIImageService>(c =>
+    {
+        c.BaseAddress = new Uri(openAIHeroBase);
+        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIHeroKey}");
+        c.Timeout = TimeSpan.FromSeconds(120);
+    });
+}
+
 // Register dedicated OpenAIBroadcastService from OpenAIBroadcasr configuration section (note intentional key name to match user's file)
 var openAIBroadcastKey = builder.Configuration["OpenAIBroadcast:ApiKey"];
 if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
@@ -221,6 +234,10 @@ if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
     });
 }
 
+// Register PublicationService and ScheduledPublishHostedService
+builder.Services.AddScoped<IPublicationService, PublicationService>();
+builder.Services.AddHostedService<ScheduledPublishHostedService>();
+
 // Register dedicated OpenAIContentCreationService from OpenAIContentCreation configuration section
 var openAIContentCreationKey = builder.Configuration["OpenAIContentCreation:ApiKey"];
 if (!string.IsNullOrWhiteSpace(openAIContentCreationKey))
@@ -229,8 +246,6 @@ if (!string.IsNullOrWhiteSpace(openAIContentCreationKey))
 }
 
 builder.Services.AddAuthorization();
-
-
 
 // Validate required config for frontend reset URL
 if (string.IsNullOrWhiteSpace(builder.Configuration["Frontend:ResetPasswordUrl"]))
