@@ -16,7 +16,7 @@ namespace News_Back_end.Services
  public OpenAIImageService(HttpClient client, IConfiguration config)
  {
  _client = client;
- _apiKey = config["OpenAI:ApiKey"] ?? string.Empty;
+ _apiKey = config["OpenAIHeroImageCreation:ApiKey"] ?? string.Empty;
  _baseUrl = config["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
  }
 

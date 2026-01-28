@@ -213,11 +213,20 @@ var openAIHeroKey = builder.Configuration["OpenAIHeroImageCreation:ApiKey"];
 var openAIHeroBase = builder.Configuration["OpenAIHeroImageCreation:BaseUrl"] ?? openAIBase;
 if (!string.IsNullOrWhiteSpace(openAIHeroKey))
 {
-    builder.Services.AddHttpClient<IImageGenerationService, OpenAIImageService>(c =>
+    // Register the concrete OpenAIImageService as an HttpClient; then wrap it with LocalImageAdapter
+    builder.Services.AddHttpClient<OpenAIImageService>(c =>
     {
         c.BaseAddress = new Uri(openAIHeroBase);
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIHeroKey}");
         c.Timeout = TimeSpan.FromSeconds(120);
+    });
+
+    // Adapter will download remote image to wwwroot/assets/generated and return the relative path
+    builder.Services.AddScoped<IImageGenerationService>(sp =>
+    {
+        var inner = sp.GetRequiredService<OpenAIImageService>();
+        var env = sp.GetRequiredService<IWebHostEnvironment>();
+        return new LocalImageAdapter(inner, env.WebRootPath);
     });
 }
 

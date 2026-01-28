@@ -8,6 +8,8 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.IO;
+using Microsoft.AspNetCore.Hosting;
 
 namespace News_Back_end.Controllers
 {
@@ -18,16 +20,18 @@ namespace News_Back_end.Controllers
  private readonly MyDBContext _db;
  private readonly IImageGenerationService? _imageService;
  private readonly IPublicationService _pubService;
+        private readonly IWebHostEnvironment _env;
 
- public PublishController(MyDBContext db, IPublicationService pubService, IImageGenerationService? imageService = null)
- {
- _db = db;
- _imageService = imageService;
- _pubService = pubService;
- }
+        public PublishController(MyDBContext db, IPublicationService pubService, IWebHostEnvironment env, IImageGenerationService? imageService = null)
+        {
+            _db = db;
+            _imageService = imageService;
+            _pubService = pubService;
+            _env = env;
+        }
 
- // GET /api/publish/{id}
- [HttpGet("{id:int}")]
+        // GET /api/publish/{id}
+        [HttpGet("{id:int}")]
  [Authorize(Roles = "Consultant")]
  public async Task<IActionResult> GetDraft(int id)
  {
@@ -145,59 +149,122 @@ namespace News_Back_end.Controllers
 
  return BadRequest("unknown action");
  }
+        [HttpPost("{id:int}/generate-hero")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> GenerateHero(int id, [FromBody] GenerateHeroImageDto dto)
+        {
+            var draft = await _db.PublicationDrafts.FirstOrDefaultAsync(d => d.NewsArticleId == id);
+            if (draft == null)
+            {
+                draft = new PublicationDraft { NewsArticleId = id, CreatedAt = DateTime.Now };
+                _db.PublicationDrafts.Add(draft);
+            }
 
- // POST /api/publish/{id}/generate-hero
- [HttpPost("{id:int}/generate-hero")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> GenerateHero(int id, [FromBody] GenerateHeroImageDto dto)
- {
- var draft = await _db.PublicationDrafts.FirstOrDefaultAsync(d => d.NewsArticleId == id);
- if (draft == null)
- {
- draft = new PublicationDraft { NewsArticleId = id, CreatedAt = DateTime.Now };
- _db.PublicationDrafts.Add(draft);
- }
+            if (_imageService == null)
+            {
+                var placeholder = "/assets/generated/hero_placeholder.svg";
+                draft.HeroImageUrl = placeholder;
+                draft.HeroImageSource = "generated-placeholder";
+                draft.UpdatedAt = DateTime.Now;
+                await _db.SaveChangesAsync();
+                return Ok(new { url = placeholder, fallback = true });
+            }
 
- if (_imageService == null)
- {
- // fallback to placeholder URL when service not configured
- var placeholder = $"/assets/generated/hero_{id}.jpg";
- draft.HeroImageUrl = placeholder;
- draft.HeroImageSource = "generated";
- draft.UpdatedAt = DateTime.Now;
- await _db.SaveChangesAsync();
- return Ok(new { url = placeholder });
- }
+            var article = await _db.NewsArticles.FindAsync(id);
+            var baseText = article?.TitleEN ?? article?.TitleZH ?? article?.OriginalContent ?? "";
+            var prompt = (!string.IsNullOrWhiteSpace(dto?.PromptOverride)) ? dto.PromptOverride!.Trim()
+                        : $"Professional hero image for article: {baseText}";
 
- // build prompt using article content and optional override
- var article = await _db.NewsArticles.FindAsync(id);
- var baseText = article?.TitleEN ?? article?.TitleZH ?? article?.OriginalContent ?? "";
- var prompt = (dto.PromptOverride?.Trim().Length >0) ? dto.PromptOverride!.Trim() : $"Professional hero image for article: {baseText}";
+            string? url = null;
+            string? lastError = null;
+            const int maxAttempts = 3;
 
- try
- {
- var url = await _imageService.GenerateImageAsync(id, prompt, dto.Style);
- if (url == null)
- {
- return StatusCode(502, "image generation failed");
- }
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
+            {
+                try
+                {
+                    url = await _imageService.GenerateImageAsync(id, prompt, dto?.Style);
+                    if (!string.IsNullOrWhiteSpace(url)) break;
+                    lastError = $"service returned null/empty (attempt {attempt})";
+                    Console.WriteLine(lastError);
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex.Message;
+                    Console.WriteLine($"GenerateHero attempt {attempt} failed: {ex}");
+                }
+                if (attempt < maxAttempts) await Task.Delay(1000 * attempt);
+            }
 
- draft.HeroImageUrl = url;
- draft.HeroImageSource = "generated";
- draft.UpdatedAt = DateTime.Now;
- await _db.SaveChangesAsync();
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                const string placeholder = "/assets/generated/hero_placeholder.svg";
+                draft.HeroImageUrl = placeholder;
+                draft.HeroImageSource = "generated-fallback";
+                draft.UpdatedAt = DateTime.Now;
+                await _db.SaveChangesAsync();
 
- return Ok(new { url });
- }
- catch (Exception ex)
- {
- Console.WriteLine("GenerateHero error: " + ex);
- return StatusCode(500, "error generating image");
- }
- }
+                Console.WriteLine($"GenerateHero: failed after retries for id={id}, reason={lastError}");
+                return Ok(new { url = placeholder, fallback = true, reason = lastError });
+            }
 
- // GET /api/publish/{id}/preview
- [HttpGet("{id:int}/preview")]
+            try
+            {
+                if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var comma = url.IndexOf(',');
+                    if (comma <= 0) throw new InvalidOperationException("invalid data URI");
+                    var meta = url.Substring(5, comma - 5);
+                    var base64 = url.Substring(comma + 1);
+                    var bytes = Convert.FromBase64String(base64);
+
+                    string ext = "jpg";
+                    if (meta.Contains("png")) ext = "png";
+                    else if (meta.Contains("gif")) ext = "gif";
+                    else if (meta.Contains("jpeg")) ext = "jpg";
+
+                    var fileName = $"hero_{id}.{ext}";
+                    var dir = Path.Combine(_env.WebRootPath ?? "wwwroot", "assets", "generated");
+                    Directory.CreateDirectory(dir);
+                    var path = Path.Combine(dir, fileName);
+                    await System.IO.File.WriteAllBytesAsync(path, bytes);
+
+                    var savedUrl = $"{Request.Scheme}://{Request.Host}/assets/generated/{fileName}";
+                    draft.HeroImageUrl = savedUrl;
+                }
+                else if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                         (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+                {
+                    draft.HeroImageUrl = url;
+                }
+                else
+                {
+                    var normalized = url.StartsWith("/") ? url : "/assets/generated/" + url;
+                    draft.HeroImageUrl = normalized;
+                }
+
+                draft.HeroImageSource = "generated";
+                draft.UpdatedAt = DateTime.Now;
+                await _db.SaveChangesAsync();
+
+                return Ok(new { url = draft.HeroImageUrl });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("GenerateHero save error: " + ex);
+
+                const string placeholder = "/assets/generated/hero_placeholder.svg";
+                draft.HeroImageUrl = placeholder;
+                draft.HeroImageSource = "generated-error";
+                draft.UpdatedAt = DateTime.Now;
+                await _db.SaveChangesAsync();
+
+                return StatusCode(502, new { error = "image_processing_failed", reason = ex.Message });
+            }
+        }
+
+        // GET /api/publish/{id}/preview
+        [HttpGet("{id:int}/preview")]
  [Authorize(Roles = "Consultant")]
  public async Task<IActionResult> Preview(int id, [FromQuery] string? lang = null)
  {
