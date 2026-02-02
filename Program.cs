@@ -321,30 +321,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-//// Serve static files from GeneratedAssets folder for PDF/PPT downloads
-//app.UseStaticFiles(new StaticFileOptions
-//{
-//    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-//        Path.Combine(Directory.GetCurrentDirectory(), "GeneratedAssets")),
-//    RequestPath = "/GeneratedAssets"
-//});
+app.UseStaticFiles();
 
 app.UseCors();
-app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 app.Run();
-
-
-
-
-
-
-
-
-
-
-
