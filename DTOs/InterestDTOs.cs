@@ -4,19 +4,24 @@ namespace News_Back_end.DTOs
 {
  public class CreateInterestDTO
  {
- [Required, MaxLength(100)]
- public string Name { get; set; } = null!;
+[Required, MaxLength(100)]
+ public string NameEN { get; set; } = null!;
+[Required, MaxLength(100)]
+ public string NameZH { get; set; } = null!;
  }
 
  public class UpdateInterestDTO
  {
- [Required, MaxLength(100)]
- public string Name { get; set; } = null!;
+[Required, MaxLength(100)]
+ public string NameEN { get; set; } = null!;
+[Required, MaxLength(100)]
+ public string NameZH { get; set; } = null!;
  }
 
  public class InterestResponseDTO
  {
  public int InterestTagId { get; set; }
- public string Name { get; set; } = null!;
+ public string NameEN { get; set; } = null!;
+ public string NameZH { get; set; } = null!;
  }
 }

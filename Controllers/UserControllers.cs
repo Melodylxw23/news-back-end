@@ -57,15 +57,12 @@ namespace News_Back_end.Controllers
             if (await _userManager.FindByEmailAsync(dto.Email) != null)
                 return BadRequest("Email is already registered.");
 
-            // Validate secret code → assign role
+            // Validate secret code → assign role (Consultant registration via this endpoint removed)
             string adminCode = _config["RoleSecretCodes:Admin"];
-            string consultantCode = _config["RoleSecretCodes:Consultant"];
 
             string assignedRole;
             if (dto.SecretCode == adminCode)
                 assignedRole = "Admin";
-            else if (dto.SecretCode == consultantCode)
-                assignedRole = "Consultant";
             else
                 return BadRequest("Invalid secret code.");
 
@@ -76,7 +73,7 @@ namespace News_Back_end.Controllers
                 Name = dto.Name,
                 WeChatWorkId = dto.WeChatWorkId,
                 IsActive = true,
-                Lastlogin = DateTime.UtcNow
+                Lastlogin = DateTime.Now
             };
 
             var result = await _userManager.CreateAsync(user, dto.Password);
@@ -108,8 +105,8 @@ namespace News_Back_end.Controllers
                     Name = m.ContactPerson,
                     m.Email,
                     m.CompanyName,
-                    IndustryTags = m.IndustryTags.Select(t => new { t.IndustryTagId, t.Name }).ToList(),
-                    InterestTags = m.Interests.Select(t => new { t.InterestTagId, t.Name }).ToList(),
+                    IndustryTags = m.IndustryTags.Select(t => new { t.IndustryTagId, t.NameEN, t.NameZH }).ToList(),
+                    InterestTags = m.Interests.Select(t => new { t.InterestTagId, t.NameEN, t.NameZH }).ToList(),
                     IsActive = _context.Users.Where(u => u.Id == m.ApplicationUserId).Select(u => u.IsActive).FirstOrDefault()
                 })
                 .ToListAsync();
@@ -191,7 +188,7 @@ namespace News_Back_end.Controllers
                 Name = dto.Name,
                 WeChatWorkId = null,
                 IsActive = true,
-                Lastlogin = DateTime.UtcNow,
+                Lastlogin = DateTime.Now,
                 MustChangePassword = true  // Force password change on first login
             };
 
@@ -264,7 +261,7 @@ namespace News_Back_end.Controllers
             if (roles.Contains("Consultant") && dto.SecretCode != _config["RoleSecretCodes:Consultant"])
                 return Unauthorized("Invalid secret code for Consultant.");
 
-            user.Lastlogin = DateTime.UtcNow;
+            user.Lastlogin = DateTime.Now;
             await _userManager.UpdateAsync(user);
 
             // Create JWT token for authenticated user
@@ -287,7 +284,7 @@ namespace News_Back_end.Controllers
                 issuer: jwtIssuer,
                 audience: jwtAudience,
                 claims: claims,
-                expires: DateTime.UtcNow.AddDays(7),
+                expires: DateTime.Now.AddDays(7),
                 signingCredentials: creds
             );
 
@@ -347,7 +344,7 @@ namespace News_Back_end.Controllers
                     return BadRequest(changeResult.Errors);
             }
 
-            user.Lastlogin = DateTime.UtcNow;
+            user.Lastlogin = DateTime.Now;
             var upd = await _userManager.UpdateAsync(user);
             if (!upd.Succeeded)
                 return BadRequest(upd.Errors);
@@ -476,7 +473,7 @@ namespace News_Back_end.Controllers
             if (!resetResult.Succeeded)
                 return BadRequest(resetResult.Errors);
 
-            user.Lastlogin = DateTime.UtcNow;
+            user.Lastlogin = DateTime.Now;
             await _userManager.UpdateAsync(user);
 
             return Ok("Password has been reset.");
@@ -527,7 +524,7 @@ namespace News_Back_end.Controllers
                 Name = dto.ContactPerson,
                 WeChatWorkId = dto.WeChatWorkId,
                 IsActive = true,
-                Lastlogin = DateTime.UtcNow
+                Lastlogin = DateTime.Now
             };
 
             var res = await _userManager.CreateAsync(appUser, dto.Password);
@@ -552,7 +549,7 @@ namespace News_Back_end.Controllers
                 PreferredChannel = dto.PreferredChannel,
                 MembershipType = dto.MembershipType,
                 ApplicationUserId = appUser.Id,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             _context.Members.Add(member);
@@ -697,8 +694,8 @@ namespace News_Back_end.Controllers
                     memberEntity.NotificationFrequency,        // ADD THIS LINE
                     memberEntity.NotificationLanguage,         // ADD THIS LINE
                     memberEntity.ApplyToAllTopics,             // ADD THIS LINE
-                    Interests = memberEntity.Interests?.Select(i => new { i.InterestTagId, i.Name }).ToList(),
-                    IndustryTags = memberEntity.IndustryTags?.Select(i => new { i.IndustryTagId, i.Name }).ToList()
+                    Interests = memberEntity.Interests?.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH }).ToList(),
+                    IndustryTags = memberEntity.IndustryTags?.Select(i => new { i.IndustryTagId, i.NameEN, i.NameZH }).ToList()
                 };
             }
 

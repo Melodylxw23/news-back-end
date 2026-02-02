@@ -12,8 +12,8 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    [Migration("20260114034722_broadcas database updte")]
-    partial class broadcasdatabaseupdte
+    [Migration("20260123092205_AddedCHInterest")]
+    partial class AddedCHInterest
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -319,6 +319,37 @@ namespace News_Back_end.Migrations
                     b.ToTable("BroadcastMessages");
                 });
 
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchMetric", b =>
+                {
+                    b.Property<int>("FetchMetricId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("FetchMetricId"));
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ItemsFetched")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("FetchMetricId");
+
+                    b.ToTable("FetchMetrics");
+                });
+
             modelBuilder.Entity("News_Back_end.Models.SQLServer.IndustryTag", b =>
                 {
                     b.Property<int>("IndustryTagId")
@@ -327,9 +358,21 @@ namespace News_Back_end.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IndustryTagId"));
 
-                    b.Property<string>("Name")
-                        .IsRequired()
+                    b.Property<string>("DescriptionEN")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DescriptionZH")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NameEN")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NameZH")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.HasKey("IndustryTagId");
 
@@ -344,9 +387,21 @@ namespace News_Back_end.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("InterestTagId"));
 
-                    b.Property<string>("Name")
-                        .IsRequired()
+                    b.Property<string>("DescriptionEN")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DescriptionZH")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NameEN")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("NameZH")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.HasKey("InterestTagId");
 
@@ -438,6 +493,15 @@ namespace News_Back_end.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("DescriptionSettingId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FullContentEN")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FullContentZH")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("NLPKeywords")
                         .HasColumnType("nvarchar(max)");
 
@@ -471,10 +535,17 @@ namespace News_Back_end.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<int?>("SummaryId")
-                        .HasColumnType("int");
+                    b.Property<string>("SummaryEN")
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Title")
+                    b.Property<string>("SummaryZH")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TitleEN")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TitleZH")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -561,6 +632,75 @@ namespace News_Back_end.Migrations
                     b.HasKey("SourceId");
 
                     b.ToTable("Sources");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.SourceDescriptionSetting", b =>
+                {
+                    b.Property<int>("SettingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SettingId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CustomKeyPoints")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("HighlightEntities")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeChineseSummary")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeEnglishSummary")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeOriginalChinese")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxArticlesPerFetch")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinArticleLength")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("SentimentAnalysisEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SummaryFocus")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SummaryFormat")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SummaryLanguage")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SummaryTone")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("SummaryWordCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("TranslateOnFetch")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("SettingId");
+
+                    b.HasIndex("SourceId");
+
+                    b.ToTable("SourceDescriptionSettings");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
@@ -688,6 +828,17 @@ namespace News_Back_end.Migrations
                     b.HasOne("News_Back_end.Models.SQLServer.Source", "Source")
                         .WithMany()
                         .HasForeignKey("SourceId");
+
+                    b.Navigation("Source");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.SourceDescriptionSetting", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.Source", "Source")
+                        .WithMany()
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Source");
                 });

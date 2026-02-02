@@ -52,8 +52,8 @@ namespace News_Back_end.Models.SQLServer
  public BroadcastStatus Status { get; set; } = BroadcastStatus.Draft;
 
  // Audit fields
- public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
- public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
+        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
 
  // Optional scheduling
  public DateTimeOffset? ScheduledSendAt { get; set; }

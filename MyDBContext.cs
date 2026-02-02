@@ -21,8 +21,10 @@ namespace News_Back_end
         public DbSet<NewsArticle> NewsArticles { get; set; } = null!;
         public DbSet<TranslationAudit> TranslationAudits { get; set; } = null!;
         public DbSet<BroadcastMessage> BroadcastMessages { get; set; } = null!;
-        public DbSet<ArticleLabel> ArticleLabels { get; set; } = null!;
-        public DbSet<Summary> Summaries { get; set; } = null!;
+        public DbSet<SourceDescriptionSetting> SourceDescriptionSettings { get; set; } = null!;
+        public DbSet<FetchMetric> FetchMetrics { get; set; } = null!;
+        public DbSet<PublicationDraft> PublicationDrafts { get; set; } = null!;
+        // ArticleLabel removed - not used
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -87,7 +89,21 @@ namespace News_Back_end
                 .Property(b => b.Status)
                 .HasConversion<string>()
                 .HasColumnType("nvarchar(50)");
+
+            // PublicationDraft: single IndustryTag FK relation
+            modelBuilder.Entity<PublicationDraft>()
+                .HasOne(p => p.IndustryTag)
+                .WithMany(i => i.PublicationDrafts)
+                .HasForeignKey(p => p.IndustryTagId)
+                .IsRequired(false);
+
+            // PublicationDraft many-to-many relationship with interest tags
+            modelBuilder.Entity<PublicationDraft>()
+                .HasMany(p => p.InterestTags)
+                .WithMany(i => i.PublicationDrafts)
+                .UsingEntity(j => j.ToTable("PublicationDraftInterestTags"));
         }
+
 
         // Ensure consistent semantics: if a translation was saved by the crawler, mark status InProgress
         private void ApplyCrawlerTranslationRules()

@@ -7,6 +7,7 @@ using System.Xml;
 using System.Net.Http;
 using System.Text.Json;
 using System.Xml.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
@@ -104,6 +105,37 @@ namespace News_Back_end.Services
                         feedUrl = discovered;
                         feedBody = await FetchStringWithLogging(feedUrl);
                     }
+                    else
+                    {
+                        // If no feed link found, try to detect a simple <iframe src="..."> that may point to a real content page
+                        try
+                        {
+                            var doc = new HtmlDocument();
+                            doc.LoadHtml(feedBody);
+                            var iframe = doc.DocumentNode.SelectSingleNode("//iframe[@src]");
+                            if (iframe != null)
+                            {
+                                var href = iframe.GetAttributeValue("src", null);
+                                if (!string.IsNullOrWhiteSpace(href))
+                                {
+                                    try
+                                    {
+                                        var resolved = new Uri(new Uri(feedUrl), href).ToString();
+                                        // attempt to fetch iframe target and treat it as feed/body fallback
+                                        var iframeBody = await FetchStringWithLogging(resolved);
+                                        if (!string.IsNullOrWhiteSpace(iframeBody))
+                                        {
+                                            // replace feedBody so subsequent discovery/parse will try the iframe content
+                                            feedUrl = resolved;
+                                            feedBody = iframeBody;
+                                        }
+                                    }
+                                    catch { /* ignore iframe resolution errors */ }
+                                }
+                            }
+                        }
+                        catch { /* ignore iframe parsing errors */ }
+                    }
                 }
 
                 // If still looks like HTML and no feed found, we can optionally try to parse the homepage with HTML crawler
@@ -177,7 +209,7 @@ namespace News_Back_end.Services
                         Title = item.Title?.Text,
                         Content = content ?? string.Empty,
                         SourceURL = link ?? string.Empty,
-                        PublishedDate = item.PublishDate.DateTime == DateTime.MinValue ? DateTime.UtcNow : item.PublishDate.DateTime,
+                        PublishedDate = item.PublishDate.DateTime == DateTime.MinValue ? DateTime.Now : item.PublishDate.DateTime,
                         OriginalLanguage = source.Language.ToString()
                     });
                 }
@@ -397,7 +429,7 @@ namespace News_Back_end.Services
                             Title = title ?? "No title",
                             Content = "Content fetched separately if needed",
                             SourceURL = link ?? string.Empty,
-                            PublishedDate = DateTime.UtcNow,
+                        PublishedDate = DateTime.Now,
                             OriginalLanguage = source.Language.ToString()
                         });
                     }
@@ -494,23 +526,126 @@ namespace News_Back_end.Services
                 var html = await _httpClient.GetStringAsync(url);
                 var doc = new HtmlDocument();
                 doc.LoadHtml(html);
+                // remove scripts/styles and common chrome elements to reduce noise
+                try
+                {
+                    var cleanup = doc.DocumentNode.SelectNodes("//script|//style|//noscript|//iframe|//header|//footer|//nav|//aside");
+                    if (cleanup != null)
+                    {
+                        foreach (var n in cleanup) n.Remove();
+                    }
 
-                var contentNode = doc.DocumentNode.SelectSingleNode("//article")
-                               ?? doc.DocumentNode.SelectSingleNode("//main")
-                               ?? doc.DocumentNode.SelectSingleNode("//*[@id='content']")
-                               ?? doc.DocumentNode.SelectSingleNode("//*[@class='article-body']")
-                               ?? doc.DocumentNode;
+                    // remove common noisy classes/ids
+                    var noisyPatterns = new[] { "nav", "breadcrumb", "footer", "header", "subscribe", "share", "related", "comments", "advert", "ads", "cookie" };
+                    foreach (var pat in noisyPatterns)
+                    {
+                        var nodes = doc.DocumentNode.SelectNodes($"//*[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pat}') or contains(translate(@id, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{pat}')]");
+                        if (nodes == null) continue;
+                        foreach (var n in nodes) n.Remove();
+                    }
+                }
+                catch { }
 
-                var text = contentNode?.InnerText?.Trim() ?? string.Empty;
+                // Candidate XPath selectors to find main content
+                var xpaths = new[] {
+                    "//article",
+                    "//main",
+                    "//*[@id='content']",
+                    "//*[@id='main']",
+                    "//*[contains(@class,'article-body')]",
+                    "//*[contains(@class,'article-content')]",
+                    "//*[contains(@class,'post-content')]",
+                    "//*[contains(@class,'entry-content')]",
+                    "//*[contains(@class,'content') and (name() = 'div' or name() = 'section') ]"
+                };
+
+                HtmlNode bestNode = null;
+                int bestLen = 0;
+                foreach (var xp in xpaths)
+                {
+                    try
+                    {
+                        var nodes = doc.DocumentNode.SelectNodes(xp);
+                        if (nodes == null) continue;
+                        foreach (var n in nodes)
+                        {
+                            var txt = (n.InnerText ?? string.Empty).Trim();
+                            var len = txt.Length;
+                            if (len > bestLen)
+                            {
+                                bestLen = len;
+                                bestNode = n;
+                            }
+                        }
+                        if (bestLen > 200) break; // likely found main content
+                    }
+                    catch { }
+                }
+
+                // Fallback: choose largest child under body
+                if (bestNode == null)
+                {
+                    try
+                    {
+                        var body = doc.DocumentNode.SelectSingleNode("//body") ?? doc.DocumentNode;
+                        foreach (var child in body.ChildNodes)
+                        {
+                            var txt = (child.InnerText ?? string.Empty).Trim();
+                            var len = txt.Length;
+                            if (len > bestLen)
+                            {
+                                bestLen = len;
+                                bestNode = child;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                var contentNode = bestNode ?? doc.DocumentNode;
+
+                // extract and normalize text
+                var text = contentNode.InnerText ?? string.Empty;
+                // collapse whitespace
+                text = Regex.Replace(text, "\\s+", " ").Trim();
+
+                // Heuristic: discard boilerplate/legal/privacy pages that are not real articles
+                try
+                {
+                    var low = text.Length > 1000 ? text.Substring(0, 1000).ToLowerInvariant() : text.ToLowerInvariant();
+                    var boilerplateIndicators = new[] { "关于我们", "联系我们", "版权", "隐私", "免责声明", "联系我们", "联系我们" , "all rights reserved", "privacy policy", "terms of use", "联系我们" };
+                    var matches = boilerplateIndicators.Count(p => low.Contains(p));
+                    if (matches >= 2 || text.Length < 50)
+                    {
+                        // treat as non-article
+                        return null;
+                    }
+                }
+                catch { }
+
+                // extract title
                 var title = doc.DocumentNode.SelectSingleNode("//meta[@property='og:title']")?.GetAttributeValue("content", null)
                             ?? doc.DocumentNode.SelectSingleNode("//title")?.InnerText?.Trim();
+
+                // remove leading title occurrences from content
+                if (!string.IsNullOrWhiteSpace(title) && text.StartsWith(title))
+                {
+                    text = text.Substring(title.Length).Trim();
+                }
+
+                // final trim
+                if (text.Length > 0 && text.Length < 20)
+                {
+                    // very short extraction, try fallback to full document text
+                    text = Regex.Replace(doc.DocumentNode.InnerText ?? string.Empty, "\\s+", " ").Trim();
+                }
 
                 return new CrawlerDTO
                 {
                     Title = title,
                     Content = text,
                     SourceURL = url,
-                    PublishedDate = DateTime.UtcNow,
+                    PublishedDate = DateTime.Now,
                     OriginalLanguage = null
                 };
             }
@@ -541,6 +676,9 @@ namespace News_Back_end.Services
         {
             if (string.IsNullOrWhiteSpace(sourceType))
                 throw new ArgumentException("sourceType is required", nameof(sourceType));
+
+            // Do not return UnifiedCrawlerService here because it does not implement `Crawler`.
+            // Unified crawling is used directly where needed (see UnifiedCrawlerService.CrawlAsync).
 
             switch (sourceType.Trim().ToLowerInvariant())
             {
@@ -594,15 +732,98 @@ namespace News_Back_end.Services
                             if (exists)
                                 continue;
 
+                        // Try to process the raw article using ArticleProcessor (will translate+summarize when available)
+                        var processor = scope.ServiceProvider.GetService<ArticleProcessor>();
+                        // load per-source settings if available
+                        var perSourceSettings = await db.SourceDescriptionSettings.FirstOrDefaultAsync(x => x.SourceId == source.SourceId, stoppingToken);
+                        if (perSourceSettings == null)
+                        {
+                            perSourceSettings = new SourceDescriptionSetting
+                            {
+                                MinArticleLength = 0,
+                                MaxArticlesPerFetch = 100,
+                                TranslateOnFetch = true,
+                                IncludeEnglishSummary = true,
+                                IncludeChineseSummary = true,
+                                SummaryWordCount = 150,
+                                SummaryTone = "neutral",
+                                SummaryFormat = "paragraph"
+                            };
+                        }
+
+                        if (processor != null)
+                        {
+                            try
+                            {
+                                var processed = await processor.ProcessArticle(a, perSourceSettings);
+                                if (processed != null)
+                                {
+                                    var entity = new NewsArticle
+                                    {
+                                        TitleZH = processed.TitleZH ?? string.Empty,
+                                        TitleEN = processed.TitleEN,
+                                        OriginalContent = processed.OriginalContent ?? string.Empty,
+                                        TranslatedContent = processed.TranslatedContent,
+                                        FullContentEN = processed.FullContentEN,
+                                        FullContentZH = processed.FullContentZH,
+                                        SummaryEN = processed.SummaryEN,
+                                        SummaryZH = processed.SummaryZH,
+                                        SourceURL = processed.SourceURL ?? string.Empty,
+                                        PublishedAt = processed.PublishedAt,
+                                        OriginalLanguage = processed.OriginalLanguage ?? source.Language.ToString(),
+                                        SourceId = source.SourceId,
+                                        CreatedAt = DateTime.Now,
+                                        TranslationSavedBy = "crawler",
+                                        TranslationSavedAt = DateTime.Now,
+                                        TranslationStatus = Models.SQLServer.TranslationStatus.Translated
+                                    };
+                                    // best-effort audit
+                                    try
+                                    {
+                                        db.TranslationAudits.Add(new TranslationAudit
+                                        {
+                                            NewsArticleId = entity.NewsArticleId,
+                                            Action = "Saved",
+                                            PerformedBy = entity.TranslationSavedBy ?? "crawler",
+                                            PerformedAt = DateTime.Now,
+                                            Details = entity.TranslationLanguage ?? string.Empty
+                                        });
+                                    }
+                                    catch { }
+
+                                    db.NewsArticles.Add(entity);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Background processor failed for article {a.SourceURL}: {ex.Message}");
+                                // fallback: add minimal entity so article is persisted
+                                db.NewsArticles.Add(new NewsArticle
+                                {
+                                    TitleZH = a.Title ?? string.Empty,
+                                    TitleEN = null,
+                                    OriginalContent = a.Content ?? string.Empty,
+                                    SourceURL = a.SourceURL ?? string.Empty,
+                                    PublishedAt = a.PublishedDate,
+                                    OriginalLanguage = a.OriginalLanguage ?? source.Language.ToString(),
+                                    SourceId = source.SourceId,
+                                    CreatedAt = DateTime.Now
+                                });
+                            }
+                        }
+                        else
+                        {
+                            // No ArticleProcessor available — fallback to lightweight translation behavior
                             var entity = new NewsArticle
                             {
-                                Title = a.Title ?? string.Empty,
+                                TitleZH = a.Title ?? string.Empty,
+                                TitleEN = null,
                                 OriginalContent = a.Content ?? string.Empty,
                                 SourceURL = a.SourceURL ?? string.Empty,
                                 PublishedAt = a.PublishedDate,
                                 OriginalLanguage = a.OriginalLanguage ?? source.Language.ToString(),
                                 SourceId = source.SourceId,
-                                CreatedAt = DateTime.UtcNow
+                                CreatedAt = DateTime.Now
                             };
 
                             var translationService = scope.ServiceProvider.GetService<ITranslationService>();
@@ -614,27 +835,19 @@ namespace News_Back_end.Services
                                 {
                                     entity.TranslationLanguage = "en";
                                     entity.TranslatedContent = await translationService.TranslateAsync(entity.OriginalContent, "en");
-                                    // auto-translated by crawler: mark InProgress so consultant reviews
                                     entity.TranslationStatus = Models.SQLServer.TranslationStatus.InProgress;
-                                    entity.TranslationReviewedBy = null;
-                                    entity.TranslationReviewedAt = null;
                                 }
                                 else
                                 {
                                     entity.TranslationLanguage = "zh";
                                     entity.TranslatedContent = await translationService.TranslateAsync(entity.OriginalContent, "zh");
-                                    // auto-translated by crawler: mark InProgress so consultant reviews
                                     entity.TranslationStatus = Models.SQLServer.TranslationStatus.InProgress;
-                                    entity.TranslationReviewedBy = null;
-                                    entity.TranslationReviewedAt = null;
                                 }
 
-                                // record that crawler saved the translation
                                 try
                                 {
                                     entity.TranslationSavedBy = "crawler";
                                     entity.TranslationSavedAt = DateTime.Now;
-                                    // add audit record
                                     db.TranslationAudits.Add(new TranslationAudit
                                     {
                                         NewsArticleId = entity.NewsArticleId,
@@ -644,12 +857,13 @@ namespace News_Back_end.Services
                                         Details = entity.TranslationLanguage
                                     });
                                 }
-                                catch { /* non-fatal */ }
+                                catch { }
                             }
 
                             db.NewsArticles.Add(entity);
                         }
-                        source.LastCrawledAt = DateTime.UtcNow;
+                        }
+                        source.LastCrawledAt = DateTime.Now;
                         await db.SaveChangesAsync(stoppingToken);
                     }
                     catch (Exception ex)
@@ -657,9 +871,42 @@ namespace News_Back_end.Services
                         Console.WriteLine($"Error crawling source {source.Name}: {ex.Message}");
                     }
                 }
-
-               
             }
         }
     }
+    public class UnifiedCrawlerService
+    {
+        private readonly RSSCrawlerService _rss;
+        private readonly HTMLCrawlerService _html;
+        private readonly APICrawlerservice _api;
+        private readonly ArticleProcessor _processor;
+
+        public UnifiedCrawlerService(RSSCrawlerService rss, HTMLCrawlerService html, APICrawlerservice api, ArticleProcessor processor)
+        {
+            _rss = rss;
+            _html = html;
+            _api = api;
+            _processor = processor;
+        }
+
+        public async Task<List<ArticleDtos>> CrawlAsync(Source source, SourceDescriptionSetting settings)
+        {
+            List<CrawlerDTO> rawArticles = source.Type switch
+            {
+                SourceType.rss => await _rss.CrawlAsync(source),
+                SourceType.html => await _html.CrawlAsync(source),
+                SourceType.api => await _api.CrawlAsync(source),
+                _ => new List<CrawlerDTO>()
+            };
+
+            var processed = new List<ArticleDtos>();
+            foreach (var raw in rawArticles.Take(settings.MaxArticlesPerFetch))
+            {
+                var article = await _processor.ProcessArticle(raw, settings);
+                if (article != null) processed.Add(article);
+            }
+            return processed;
+        }
+    }
+
 }

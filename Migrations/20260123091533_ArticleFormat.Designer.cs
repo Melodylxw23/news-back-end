@@ -12,8 +12,8 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    [Migration("20260113082922_Article")]
-    partial class Article
+    [Migration("20260123091533_ArticleFormat")]
+    partial class ArticleFormat
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -271,51 +271,6 @@ namespace News_Back_end.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ArticleLabel", b =>
-                {
-                    b.Property<int>("LabelId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("LabelId"));
-
-                    b.Property<DateTime>("AddedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("AddedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CompletedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<int>("NewsId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Notes")
-                        .HasColumnType("text");
-
-                    b.Property<int?>("SummaryId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("WorkflowStatus")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.HasKey("LabelId");
-
-                    b.HasIndex("NewsId");
-
-                    b.HasIndex("SummaryId");
-
-                    b.ToTable("ArticleLabels");
-                });
-
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastMessage", b =>
                 {
                     b.Property<int>("Id")
@@ -349,6 +304,9 @@ namespace News_Back_end.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int>("TargetAudience")
+                        .HasColumnType("int");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -359,6 +317,37 @@ namespace News_Back_end.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("BroadcastMessages");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchMetric", b =>
+                {
+                    b.Property<int>("FetchMetricId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("FetchMetricId"));
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ItemsFetched")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("FetchMetricId");
+
+                    b.ToTable("FetchMetrics");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.IndustryTag", b =>
@@ -480,6 +469,15 @@ namespace News_Back_end.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<int?>("DescriptionSettingId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FullContentEN")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FullContentZH")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("NLPKeywords")
                         .HasColumnType("nvarchar(max)");
 
@@ -513,10 +511,17 @@ namespace News_Back_end.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
 
-                    b.Property<int?>("SummaryId")
-                        .HasColumnType("int");
+                    b.Property<string>("SummaryEN")
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Title")
+                    b.Property<string>("SummaryZH")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TitleEN")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("TitleZH")
                         .IsRequired()
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -605,86 +610,73 @@ namespace News_Back_end.Migrations
                     b.ToTable("Sources");
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.Summary", b =>
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.SourceDescriptionSetting", b =>
                 {
-                    b.Property<int>("SummaryId")
+                    b.Property<int>("SettingId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SummaryId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SettingId"));
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("EditNotes")
-                        .HasColumnType("text");
+                    b.Property<string>("CustomKeyPoints")
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<int>("NewsId")
+                    b.Property<bool>("HighlightEntities")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeChineseSummary")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeEnglishSummary")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IncludeOriginalChinese")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxArticlesPerFetch")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("PdfEditedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<int>("MinArticleLength")
+                        .HasColumnType("int");
 
-                    b.Property<string>("PdfEditedBy")
+                    b.Property<bool>("SentimentAnalysisEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SummaryFocus")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime?>("PdfGeneratedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PdfGeneratedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("PdfPath")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<DateTime?>("PptEditedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PptEditedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("PptGeneratedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PptGeneratedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("PptPath")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
-
-                    b.Property<string>("Status")
+                    b.Property<string>("SummaryFormat")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime?>("SummaryEditedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SummaryEditedBy")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime?>("SummaryGeneratedAt")
-                        .HasColumnType("datetime2");
+                    b.Property<string>("SummaryLanguage")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("SummaryGeneratedBy")
-                        .HasMaxLength(255)
-                        .HasColumnType("nvarchar(255)");
+                    b.Property<string>("SummaryTone")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("SummaryText")
-                        .HasColumnType("text");
+                    b.Property<int>("SummaryWordCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("TranslateOnFetch")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("SummaryId");
+                    b.HasKey("SettingId");
 
-                    b.HasIndex("NewsId");
+                    b.HasIndex("SourceId");
 
-                    b.ToTable("Summaries");
+                    b.ToTable("SourceDescriptionSettings");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
@@ -798,23 +790,6 @@ namespace News_Back_end.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ArticleLabel", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.NewsArticle", "NewsArticle")
-                        .WithMany()
-                        .HasForeignKey("NewsId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("News_Back_end.Models.SQLServer.Summary", "Summary")
-                        .WithMany()
-                        .HasForeignKey("SummaryId");
-
-                    b.Navigation("NewsArticle");
-
-                    b.Navigation("Summary");
-                });
-
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>
                 {
                     b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ApplicationUser")
@@ -833,15 +808,15 @@ namespace News_Back_end.Migrations
                     b.Navigation("Source");
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.Summary", b =>
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.SourceDescriptionSetting", b =>
                 {
-                    b.HasOne("News_Back_end.Models.SQLServer.NewsArticle", "NewsArticle")
+                    b.HasOne("News_Back_end.Models.SQLServer.Source", "Source")
                         .WithMany()
-                        .HasForeignKey("NewsId")
+                        .HasForeignKey("SourceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("NewsArticle");
+                    b.Navigation("Source");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.ApplicationUser", b =>
