@@ -102,6 +102,12 @@ namespace News_Back_end
                 .HasMany(p => p.InterestTags)
                 .WithMany(i => i.PublicationDrafts)
                 .UsingEntity(j => j.ToTable("PublicationDraftInterestTags"));
+
+            // BroadcastMessage many-to-many relationship with PublicationDraft (selected articles)
+            modelBuilder.Entity<BroadcastMessage>()
+                .HasMany(b => b.SelectedArticles)
+                .WithMany(p => p.BroadcastMessages)
+                .UsingEntity(j => j.ToTable("BroadcastMessageArticles"));
         }
 
 

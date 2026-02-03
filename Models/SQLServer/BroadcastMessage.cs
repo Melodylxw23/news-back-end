@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace News_Back_end.Models.SQLServer
 {
@@ -60,5 +61,8 @@ namespace News_Back_end.Models.SQLServer
 
  // Optional reference to the creating user (ApplicationUser.Id)
  public string? CreatedById { get; set; }
+
+ // Many-to-many relationship with PublicationDraft (selected articles)
+ public ICollection<PublicationDraft> SelectedArticles { get; set; } = new List<PublicationDraft>();
  }
 }

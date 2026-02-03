@@ -17,7 +17,6 @@ namespace News_Back_end.Models.SQLServer
 
     public enum Channels
     {
-        Wechat,
         Email,
         Both
     }
@@ -80,7 +79,6 @@ namespace News_Back_end.Models.SQLServer
         [Required]
         [DataType(DataType.EmailAddress)]
         public string Email { get; set; }
-        public string? WeChatWorkId { get; set; }
         [Required]
         public Countries Country { get; set; }
         // normalized many-to-many
@@ -91,7 +89,7 @@ namespace News_Back_end.Models.SQLServer
         public Types MembershipType { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
 
-        // Notification preferences - stores comma-separated channels: "whatsapp,email,sms,inApp"
+        // Notification preferences - stores comma-separated channels: "email,sms,inApp"
         public string? NotificationChannels { get; set; }
 
         // link to Identity user if this member can sign in

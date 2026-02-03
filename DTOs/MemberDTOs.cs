@@ -15,8 +15,6 @@ namespace News_Back_end.DTOs
         [DataType(DataType.EmailAddress)]
         public string Email { get; set; }
 
-        public string? WeChatWorkId { get; set; }
-
         [Required]
         public Countries Country { get; set; }
         [Required]

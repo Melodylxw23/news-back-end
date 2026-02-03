@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260203034045_updates")]
+    partial class updates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,21 +24,6 @@ namespace News_Back_end.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("BroadcastMessagePublicationDraft", b =>
-                {
-                    b.Property<int>("BroadcastMessagesId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SelectedArticlesPublicationDraftId")
-                        .HasColumnType("int");
-
-                    b.HasKey("BroadcastMessagesId", "SelectedArticlesPublicationDraftId");
-
-                    b.HasIndex("SelectedArticlesPublicationDraftId");
-
-                    b.ToTable("BroadcastMessageArticles", (string)null);
-                });
 
             modelBuilder.Entity("IndustryTagMember", b =>
                 {
@@ -282,6 +270,9 @@ namespace News_Back_end.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("WeChatWorkId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
@@ -487,6 +478,9 @@ namespace News_Back_end.Migrations
                     b.Property<string>("PreferredLanguage")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("WeChatWorkId")
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("MemberId");
 
@@ -815,21 +809,6 @@ namespace News_Back_end.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TranslationAudits");
-                });
-
-            modelBuilder.Entity("BroadcastMessagePublicationDraft", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.BroadcastMessage", null)
-                        .WithMany()
-                        .HasForeignKey("BroadcastMessagesId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("News_Back_end.Models.SQLServer.PublicationDraft", null)
-                        .WithMany()
-                        .HasForeignKey("SelectedArticlesPublicationDraftId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("IndustryTagMember", b =>
