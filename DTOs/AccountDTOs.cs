@@ -20,8 +20,6 @@ namespace News_Back_end.DTOs
         [Compare(nameof(Password), ErrorMessage = "Password and ConfirmPassword does not match.")]
         public string ConfirmPassword { get; set; }
 
-        public string? WeChatWorkId { get; set; }
-
         [Required]
         public string SecretCode { get; set; }
     }
@@ -56,8 +54,6 @@ namespace News_Back_end.DTOs
         [DataType(DataType.Password)]
         [Compare(nameof(NewPassword), ErrorMessage = "NewPassword and ConfirmPassword does not match.")]
         public string? ConfirmPassword { get; set; }
-
-        public string? WeChatWorkId { get; set; }
     }
 
     public class ForgotPasswordRequestDTO

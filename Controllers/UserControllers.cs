@@ -71,7 +71,6 @@ namespace News_Back_end.Controllers
                 UserName = dto.Email,
                 Email = dto.Email,
                 Name = dto.Name,
-                WeChatWorkId = dto.WeChatWorkId,
                 IsActive = true,
                 Lastlogin = DateTime.Now
             };
@@ -127,7 +126,6 @@ namespace News_Back_end.Controllers
                     Id = u.Id,
                     Name = u.Name,
                     Email = u.Email,
-                    u.WeChatWorkId,
                     u.IsActive,
                     u.Lastlogin
                 })
@@ -186,7 +184,6 @@ namespace News_Back_end.Controllers
                 UserName = dto.Email,
                 Email = dto.Email,
                 Name = dto.Name,
-                WeChatWorkId = null,
                 IsActive = true,
                 Lastlogin = DateTime.Now,
                 MustChangePassword = true  // Force password change on first login
@@ -327,12 +324,9 @@ namespace News_Back_end.Controllers
             if (!user.IsActive)
                 return BadRequest("Account is deactivated.");
 
-            // Only allow changing name and WeChatWorkId and password
+            // Only allow changing name and password
             if (!string.IsNullOrWhiteSpace(dto.Name))
                 user.Name = dto.Name;
-
-            if (dto.WeChatWorkId != null)
-                user.WeChatWorkId = dto.WeChatWorkId;
 
             if (!string.IsNullOrEmpty(dto.NewPassword))
             {
@@ -522,7 +516,6 @@ namespace News_Back_end.Controllers
                 UserName = dto.Email,
                 Email = dto.Email,
                 Name = dto.ContactPerson,
-                WeChatWorkId = dto.WeChatWorkId,
                 IsActive = true,
                 Lastlogin = DateTime.Now
             };
@@ -543,7 +536,6 @@ namespace News_Back_end.Controllers
                 CompanyName = dto.CompanyName,
                 ContactPerson = dto.ContactPerson,
                 Email = dto.Email,
-                WeChatWorkId = dto.WeChatWorkId,
                 Country = dto.Country,
                 PreferredLanguage = dto.PreferredLanguage,
                 PreferredChannel = dto.PreferredChannel,
@@ -684,7 +676,6 @@ namespace News_Back_end.Controllers
                     memberEntity.CompanyName,
                     memberEntity.ContactPerson,
                     memberEntity.Email,
-                    memberEntity.WeChatWorkId,
                     memberEntity.Country,
                     memberEntity.PreferredLanguage,
                     memberEntity.PreferredChannel,
@@ -705,7 +696,6 @@ namespace News_Back_end.Controllers
                 user.Email,
                 user.UserName,
                 user.Name,
-                user.WeChatWorkId,
                 user.IsActive,
                 user.Lastlogin,
                 Roles = roles,

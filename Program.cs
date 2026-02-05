@@ -278,6 +278,38 @@ if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
 builder.Services.AddScoped<IPublicationService, PublicationService>();
 builder.Services.AddHostedService<ScheduledPublishHostedService>();
 
+// Register BroadcastSendingService
+builder.Services.AddScoped<IBroadcastSendingService, BroadcastSendingService>();
+
+// Register BroadcastAnalyticsService
+builder.Services.AddScoped<IBroadcastAnalyticsService, BroadcastAnalyticsService>();
+
+// Register Practical Analytics Service (reliable metrics without open/click tracking)
+builder.Services.AddScoped<IPracticalAnalyticsService, PracticalAnalyticsService>();
+
+// OpenAI Analytics Recommendations (optional) - uses OpenAIBroadcastAnalytics config section
+var openAIBroadcastAnalyticsKey = builder.Configuration["OpenAIBroadcastAnalytics:ApiKey"];
+if (!string.IsNullOrWhiteSpace(openAIBroadcastAnalyticsKey))
+{
+    var openAIBroadcastAnalyticsBase = builder.Configuration["OpenAIBroadcastAnalytics:BaseUrl"] ?? "https://api.openai.com/";
+    builder.Services.AddHttpClient<IBroadcastAnalyticsAiService, OpenAIBroadcastAnalyticsService>(c =>
+    {
+        c.BaseAddress = new Uri(openAIBroadcastAnalyticsBase);
+        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIBroadcastAnalyticsKey}");
+        c.Timeout = TimeSpan.FromSeconds(60);
+    });
+}
+
+// Consultant insights email (dummy for now)
+builder.Services.AddScoped<IConsultantInsightsEmailService, ConsultantInsightsEmailService>();
+builder.Services.AddHostedService<ConsultantInsightsHostedService>();
+
+// Register Analytics Computation background service
+builder.Services.AddHostedService<AnalyticsComputationHostedService>();
+
+// Register Scheduled Broadcast Service - automatically sends broadcasts at their scheduled time
+builder.Services.AddHostedService<BroadcastSchedulerService>();
+
 // Register dedicated OpenAIContentCreationService from OpenAIContentCreation configuration section
 var openAIContentCreationKey = builder.Configuration["OpenAIContentCreation:ApiKey"];
 if (!string.IsNullOrWhiteSpace(openAIContentCreationKey))

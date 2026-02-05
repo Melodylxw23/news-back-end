@@ -42,5 +42,8 @@ namespace News_Back_end.Models.SQLServer
 
  // One or more interest tags
  public ICollection<InterestTag> InterestTags { get; set; } = new List<InterestTag>();
+
+ // Many-to-many relationship with BroadcastMessage (broadcasts that include this article)
+ public ICollection<BroadcastMessage> BroadcastMessages { get; set; } = new List<BroadcastMessage>();
  }
 }

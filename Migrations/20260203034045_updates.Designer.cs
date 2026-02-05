@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260203034045_updates")]
+    partial class updates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,21 +24,6 @@ namespace News_Back_end.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
-
-            modelBuilder.Entity("BroadcastMessagePublicationDraft", b =>
-                {
-                    b.Property<int>("BroadcastMessagesId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SelectedArticlesPublicationDraftId")
-                        .HasColumnType("int");
-
-                    b.HasKey("BroadcastMessagesId", "SelectedArticlesPublicationDraftId");
-
-                    b.HasIndex("SelectedArticlesPublicationDraftId");
-
-                    b.ToTable("BroadcastMessageArticles", (string)null);
-                });
 
             modelBuilder.Entity("IndustryTagMember", b =>
                 {
@@ -282,6 +270,9 @@ namespace News_Back_end.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("WeChatWorkId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
@@ -293,40 +284,6 @@ namespace News_Back_end.Migrations
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
 
                     b.ToTable("AspNetUsers", (string)null);
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ArticleInteraction", b =>
-                {
-                    b.Property<int>("ArticleInteractionId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ArticleInteractionId"));
-
-                    b.Property<string>("ApplicationUserId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("DurationSeconds")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Keywords")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("MemberId")
-                        .HasColumnType("int");
-
-                    b.Property<int?>("NewsArticleId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("Type")
-                        .HasColumnType("int");
-
-                    b.HasKey("ArticleInteractionId");
-
-                    b.ToTable("ArticleInteractions", (string)null);
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastMessage", b =>
@@ -521,6 +478,9 @@ namespace News_Back_end.Migrations
                     b.Property<string>("PreferredLanguage")
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("WeChatWorkId")
+                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("MemberId");
 
@@ -819,28 +779,6 @@ namespace News_Back_end.Migrations
                     b.HasIndex("SourceId");
 
                     b.ToTable("SourceDescriptionSettings");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.TopicEmbedding", b =>
-                {
-                    b.Property<int>("TopicEmbeddingId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TopicEmbeddingId"));
-
-                    b.Property<string>("EmbeddingJson")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("InterestTagId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("LastUpdated")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("TopicEmbeddingId");
-
-                    b.ToTable("TopicEmbeddings", (string)null);
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
