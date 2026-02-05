@@ -448,7 +448,218 @@ promptBuilder.AppendLine(req.Prompt.Trim());
         }
 
         /// <summary>
-        /// Preview the list of recipients who would receive this broadcast
+        /// Get audience counts for different interest categories and subscription types
+        /// </summary>
+        /// <returns>Audience statistics for broadcast targeting</returns>
+        [HttpGet("audience-counts")]
+  public async Task<IActionResult> GetAudienceCounts()
+        {
+var allMembers = await _db.Members.CountAsync();
+            
+       // Email subscribers (members who have email enabled)
+        var emailSubscribers = await _db.Members
+      .Where(m => m.PreferredChannel == Channels.Email || m.PreferredChannel == Channels.Both)
+.Where(m => !string.IsNullOrEmpty(m.Email))
+   .CountAsync();
+     
+    var technologyInterested = await _db.Members
+      .Where(m => m.Interests.Any(t => t.NameEN.ToLower().Contains("technology") || t.NameZH.ToLower().Contains("技术")))
+ .CountAsync();
+       
+       var businessInterested = await _db.Members
+ .Where(m => m.Interests.Any(t => t.NameEN.ToLower().Contains("business") || t.NameZH.ToLower().Contains("商业")))
+ .CountAsync();
+       
+   var sportsInterested = await _db.Members
+         .Where(m => m.Interests.Any(t => t.NameEN.ToLower().Contains("sports") || t.NameZH.ToLower().Contains("体育")))
+         .CountAsync();
+          
+    var entertainmentInterested = await _db.Members
+        .Where(m => m.Interests.Any(t => t.NameEN.ToLower().Contains("entertainment") || t.NameZH.ToLower().Contains("娱乐")))
+.CountAsync();
+ 
+    var politicsInterested = await _db.Members
+      .Where(m => m.Interests.Any(t => t.NameEN.ToLower().Contains("politics") || t.NameZH.ToLower().Contains("政治")))
+.CountAsync();
+
+        // Additional useful metrics
+var activeMembers = await _db.Members
+       .Where(m => m.ApplicationUser != null && m.ApplicationUser.IsActive)
+     .CountAsync();
+
+ var membersByCountry = await _db.Members
+    .GroupBy(m => m.Country)
+  .Select(g => new CountByGroupDTO { Group = g.Key.ToString(), Count = g.Count() })
+.ToListAsync();
+
+ var membersByLanguage = await _db.Members
+    .GroupBy(m => m.PreferredLanguage)
+       .Select(g => new CountByGroupDTO { Group = g.Key.ToString(), Count = g.Count() })
+           .ToListAsync();
+
+   return Ok(new AudienceCountsDTO
+        {
+  AllMembers = allMembers,
+  ActiveMembers = activeMembers,
+  EmailSubscribers = emailSubscribers,
+   InterestCategories = new InterestCategoriesDTO
+  {
+TechnologyInterested = technologyInterested,
+           BusinessInterested = businessInterested,
+       SportsInterested = sportsInterested,
+    EntertainmentInterested = entertainmentInterested,
+        PoliticsInterested = politicsInterested
+        },
+  Demographics = new DemographicsDTO
+ {
+ByCountry = membersByCountry,
+    ByLanguage = membersByLanguage
+      },
+       EmailEngagementRate = allMembers > 0 ? Math.Round((double)emailSubscribers / allMembers * 100, 2) : 0
+      });
+    }
+
+/// <summary>
+    /// Track email opens (tracking pixel endpoint)
+        /// </summary>
+        /// <param name="broadcastId">Broadcast ID</param>
+      /// <param name="memberId">Member ID</param>
+        /// <returns>1x1 transparent PNG pixel</returns>
+        [HttpGet("track-open/{broadcastId:int}/{memberId:int}")]
+        [AllowAnonymous] // Allow anonymous access for email tracking
+        public async Task<IActionResult> TrackEmailOpen(int broadcastId, int memberId)
+    {
+try
+         {
+       // Record the open event
+    await _broadcastSending.RecordEmailOpenAsync(broadcastId, memberId);
+
+      // Return a 1x1 transparent PNG pixel
+  var pixel = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==");
+        return File(pixel, "image/png");
+        }
+        catch
+        {
+      // Even if tracking fails, return the pixel to avoid broken images
+        var pixel = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==");
+       return File(pixel, "image/png");
+   }
+     }
+
+ /// <summary>
+   /// Get detailed broadcast statistics including delivery and open tracking
+  /// </summary>
+ /// <param name="id">Broadcast ID</param>
+      /// <returns>Comprehensive broadcast statistics</returns>
+  [HttpGet("{id:int}/statistics")]
+      public async Task<IActionResult> GetBroadcastStatistics(int id)
+   {
+      try
+   {
+ var statistics = await _broadcastSending.GetBroadcastStatisticsAsync(id);
+return Ok(statistics);
+     }
+     catch (ArgumentException ex)
+  {
+     return NotFound(new { message = ex.Message });
+     }
+         catch (Exception ex)
+      {
+       return StatusCode(500, new { message = "Error getting statistics: " + ex.Message });
+  }
+        }
+
+     /// <summary>
+        /// Debug endpoint to check member and broadcast data for troubleshooting
+        /// </summary>
+     [HttpGet("debug/recipients/{broadcastId:int}")]
+        public async Task<IActionResult> DebugRecipients(int broadcastId)
+        {
+    try
+{
+       var broadcast = await _db.BroadcastMessages
+  .Include(b => b.SelectedArticles)
+  .ThenInclude(a => a.IndustryTag)
+        .Include(b => b.SelectedArticles)
+   .ThenInclude(a => a.InterestTags)
+      .FirstOrDefaultAsync(b => b.Id == broadcastId);
+
+        if (broadcast == null)
+       return NotFound("Broadcast not found");
+
+     var allMembers = await _db.Members
+         .Include(m => m.IndustryTags)
+      .Include(m => m.Interests)
+    .ToListAsync();
+
+     var emailEnabledMembers = allMembers
+         .Where(m => m.PreferredChannel == Channels.Email || m.PreferredChannel == Channels.Both)
+       .Where(m => !string.IsNullOrEmpty(m.Email))
+      .ToList();
+
+    return Ok(new
+     {
+        BroadcastInfo = new
+      {
+        Id = broadcast.Id,
+         Title = broadcast.Title,
+  TargetAudience = broadcast.TargetAudience.ToString(),
+        SelectedArticleCount = broadcast.SelectedArticles.Count,
+ SelectedArticles = broadcast.SelectedArticles.Select(a => new
+      {
+         a.PublicationDraftId,
+        Title = a.NewsArticle?.TitleEN ?? a.NewsArticle?.TitleZH ?? "No title",
+       IndustryTag = a.IndustryTag?.NameEN,
+    InterestTags = a.InterestTags.Select(it => it.NameEN).ToList()
+   }).ToList()
+  },
+    MemberStats = new
+      {
+      TotalMembers = allMembers.Count,
+   EmailEnabledMembers = emailEnabledMembers.Count,
+       MembersWithIndustryTags = emailEnabledMembers.Count(m => m.IndustryTags.Any()),
+       MembersWithInterestTags = emailEnabledMembers.Count(m => m.Interests.Any())
+     },
+    EmailEnabledMembersDetails = emailEnabledMembers.Select(m => new
+     {
+     m.MemberId,
+      m.ContactPerson,
+  m.Email,
+      m.PreferredChannel,
+    IndustryTags = m.IndustryTags.Select(it => new { it.IndustryTagId, it.NameEN }).ToList(),
+        InterestTags = m.Interests.Select(it => new { it.InterestTagId, it.NameEN }).ToList()
+     }).ToList()
+      });
+     }
+         catch (Exception ex)
+      {
+      return StatusCode(500, new { message = "Debug error: " + ex.Message });
+      }
+        }
+
+        /// <summary>
+        /// Debug endpoint to get all potential recipients (all email-enabled members)
+  /// </summary>
+        [HttpGet("debug/all-potential-recipients")]
+ public async Task<IActionResult> DebugAllPotentialRecipients()
+   {
+    try
+      {
+       var recipients = await _broadcastSending.GetAllPotentialRecipientsAsync();
+   return Ok(new
+   {
+     TotalPotentialRecipients = recipients.Count,
+    Recipients = recipients
+      });
+      }
+   catch (Exception ex)
+  {
+      return StatusCode(500, new { message = "Debug error: " + ex.Message });
+     }
+        }
+
+   /// <summary>
+  /// Preview the list of recipients who would receive this broadcast
         /// </summary>
         /// <param name="broadcastId">Broadcast ID to preview</param>
         /// <returns>List of eligible recipients</returns>
@@ -478,121 +689,291 @@ promptBuilder.AppendLine(req.Prompt.Trim());
 
         /// <summary>
    /// Send the broadcast to eligible members
-     /// </summary>
-     /// <param name="request">Send broadcast request</param>
+        /// </summary>
+        /// <param name="request">Send broadcast request</param>
         /// <returns>Send result with statistics</returns>
-        [HttpPost("send")]
-        public async Task<IActionResult> SendBroadcast([FromBody] SendBroadcastRequestDTO request)
+  [HttpPost("send")]
+   public async Task<IActionResult> SendBroadcast([FromBody] SendBroadcastRequestDTO request)
      {
-    try
+            try
             {
-    // Verify broadcast exists and can be sent
-    var broadcast = await _db.BroadcastMessages.FindAsync(request.BroadcastId);
-      if (broadcast == null)
-     return NotFound(new { message = "Broadcast not found" });
+  // Verify broadcast exists and can be sent
+  var broadcast = await _db.BroadcastMessages.FindAsync(request.BroadcastId);
+  if (broadcast == null)
+             return NotFound(new { message = "Broadcast not found" });
 
-     if (broadcast.Status == BroadcastStatus.Sent)
-      return BadRequest(new { message = "Broadcast has already been sent" });
+   if (broadcast.Status == BroadcastStatus.Sent)
+       return BadRequest(new { message = "Broadcast has already been sent" });
 
-        if (!request.ConfirmSend)
-  return BadRequest(new { message = "Send confirmation required" });
+     if (!request.ConfirmSend)
+         return BadRequest(new { message = "Send confirmation required" });
 
     // Send the broadcast
-         var result = await _broadcastSending.SendBroadcastAsync(request.BroadcastId);
-      
-     if (result.SuccessfulSends == 0 && result.Errors.Any())
+    var result = await _broadcastSending.SendBroadcastAsync(request.BroadcastId);
+
+  if (result.SuccessfulSends == 0 && result.Errors.Any())
+              {
+     return BadRequest(new
     {
-      return BadRequest(new 
-       {
        message = "Failed to send broadcast",
-         errors = result.Errors,
-            result = result
-       });
-     }
+              errors = result.Errors,
+      result = result
+      });
+        }
 
-      return Ok(new
-    {
-          message = $"Broadcast sent successfully to {result.SuccessfulSends} recipients",
- result = result
+       return Ok(new
+          {
+      message = $"Broadcast sent successfully to {result.SuccessfulSends} recipients",
+  result = result
           });
-   }
-         catch (ArgumentException ex)
-  {
-      return NotFound(new { message = ex.Message });
-}
-  catch (InvalidOperationException ex)
-   {
-      return BadRequest(new { message = ex.Message });
-}
-            catch (Exception ex)
-     {
-      return StatusCode(500, new { message = "Error sending broadcast: " + ex.Message });
-      }
-    }
-
-     /// <summary>
-        /// Get broadcast sending statistics
-        /// </summary>
-        /// <param name="broadcastId">Broadcast ID</param>
-        /// <returns>Broadcast statistics and recipient information</returns>
-        [HttpGet("{id:int}/statistics")]
-        public async Task<IActionResult> GetBroadcastStatistics(int id)
-        {
-  try
+            }
+  catch (ArgumentException ex)
+      {
+          return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
             {
-        var broadcast = await _db.BroadcastMessages.FindAsync(id);
-        if (broadcast == null)
+                return BadRequest(new { message = ex.Message });
+            }
+          catch (Exception ex)
+         {
+      return StatusCode(500, new { message = "Error sending broadcast: " + ex.Message });
+        }
+        }
+
+        /// <summary>
+      /// Schedule a broadcast for future sending
+        /// </summary>
+        /// <param name="request">Schedule broadcast request</param>
+    /// <returns>Confirmation of scheduling</returns>
+   [HttpPost("schedule")]
+        public async Task<IActionResult> ScheduleBroadcast([FromBody] ScheduleBroadcastRequestDTO request)
+   {
+     try
+            {
+   var broadcast = await _db.BroadcastMessages.FindAsync(request.BroadcastId);
+                if (broadcast == null)
         return NotFound(new { message = "Broadcast not found" });
 
-        var recipients = await _broadcastSending.GetEligibleRecipientsAsync(id);
-       
-        return Ok(new
+    if (broadcast.Status == BroadcastStatus.Sent)
+            return BadRequest(new { message = "Broadcast has already been sent" });
+
+                if (request.ScheduledSendAt <= DateTimeOffset.UtcNow)
+           return BadRequest(new { message = "Scheduled send time must be in the future" });
+
+           // Update the broadcast to scheduled status
+    broadcast.ScheduledSendAt = request.ScheduledSendAt;
+    broadcast.Status = BroadcastStatus.Scheduled;
+        broadcast.UpdatedAt = DateTimeOffset.UtcNow;
+
+    await _db.SaveChangesAsync();
+
+     return Ok(new
+          {
+  message = "Broadcast scheduled successfully",
+broadcastId = broadcast.Id,
+         scheduledSendAt = broadcast.ScheduledSendAt,
+   status = broadcast.Status.ToString()
+        });
+        }
+            catch (Exception ex)
          {
-      BroadcastId = id,
-        Title = broadcast.Title,
-        Status = broadcast.Status.ToString(),
-         TotalEligibleRecipients = recipients.Count,
-         Recipients = recipients.Select(r => new
-            {
-  r.MemberId,
-           r.Email,
-     r.ContactPerson,
-  r.CompanyName,
-r.IndustryTags,
-      r.InterestTags
-        }),
-        CreatedAt = broadcast.CreatedAt,
-  UpdatedAt = broadcast.UpdatedAt,
-      ScheduledSendAt = broadcast.ScheduledSendAt
-         });
-    }
+      return StatusCode(500, new { message = "Error scheduling broadcast: " + ex.Message });
+            }
+  }
+
+        /// <summary>
+        /// Unschedule a broadcast (change from Scheduled back to Draft)
+        /// </summary>
+        /// <param name="id">Broadcast ID</param>
+        /// <returns>Confirmation of unscheduling</returns>
+        [HttpPost("{id:int}/unschedule")]
+        public async Task<IActionResult> UnscheduleBroadcast(int id)
+        {
+            try
+     {
+       var broadcast = await _db.BroadcastMessages.FindAsync(id);
+    if (broadcast == null)
+   return NotFound(new { message = "Broadcast not found" });
+
+                if (broadcast.Status != BroadcastStatus.Scheduled)
+        return BadRequest(new { message = "Broadcast is not currently scheduled" });
+
+    // Change back to draft
+     broadcast.Status = BroadcastStatus.Draft;
+          broadcast.ScheduledSendAt = null; // Clear the scheduled time
+         broadcast.UpdatedAt = DateTimeOffset.UtcNow;
+
+    await _db.SaveChangesAsync();
+
+ return Ok(new
+       {
+   message = "Broadcast unscheduled successfully",
+         broadcastId = broadcast.Id,
+       status = broadcast.Status.ToString()
+           });
+      }
    catch (Exception ex)
+        {
+     return StatusCode(500, new { message = "Error unscheduling broadcast: " + ex.Message });
+    }
+        }
+
+        /// <summary>
+        /// Get all scheduled broadcasts
+        /// </summary>
+        /// <returns>List of broadcasts that are scheduled for future sending</returns>
+   [HttpGet("scheduled")]
+        public async Task<IActionResult> GetScheduledBroadcasts()
+        {
+      try
+       {
+                var scheduledBroadcasts = await _db.BroadcastMessages
+    .Where(b => b.Status == BroadcastStatus.Scheduled)
+               .OrderBy(b => b.ScheduledSendAt)
+        .Select(b => new
+  {
+   Id = b.Id,
+ Title = b.Title,
+            Subject = b.Subject,
+         ScheduledSendAt = b.ScheduledSendAt,
+        CreatedAt = b.CreatedAt,
+ CreatedById = b.CreatedById,
+    SelectedArticlesCount = b.SelectedArticles.Count(),
+    TimeUntilSend = b.ScheduledSendAt != null 
+         ? (b.ScheduledSendAt.Value - DateTimeOffset.UtcNow).TotalMinutes 
+        : 0
+        })
+     .ToListAsync();
+
+  return Ok(new
+        {
+   totalScheduled = scheduledBroadcasts.Count,
+     broadcasts = scheduledBroadcasts,
+            currentTime = DateTimeOffset.UtcNow
+ });
+            }
+      catch (Exception ex)
+            {
+     return StatusCode(500, new { message = "Error getting scheduled broadcasts: " + ex.Message });
+         }
+        }
+
+        /// <summary>
+     /// Reschedule a broadcast to a different time
+      /// </summary>
+  /// <param name="id">Broadcast ID</param>
+        /// <param name="request">New scheduling details</param>
+        /// <returns>Confirmation of rescheduling</returns>
+        [HttpPut("{id:int}/reschedule")]
+   public async Task<IActionResult> RescheduleBroadcast(int id, [FromBody] RescheduleBroadcastRequestDTO request)
+        {
+         try
+    {
+         var broadcast = await _db.BroadcastMessages.FindAsync(id);
+          if (broadcast == null)
+   return NotFound(new { message = "Broadcast not found" });
+
+       if (broadcast.Status != BroadcastStatus.Scheduled)
+      return BadRequest(new { message = "Broadcast is not currently scheduled" });
+
+        if (request.NewScheduledSendAt <= DateTimeOffset.UtcNow)
+      return BadRequest(new { message = "New scheduled send time must be in the future" });
+
+              var oldScheduledTime = broadcast.ScheduledSendAt;
+       broadcast.ScheduledSendAt = request.NewScheduledSendAt;
+    broadcast.UpdatedAt = DateTimeOffset.UtcNow;
+
+    await _db.SaveChangesAsync();
+
+    return Ok(new
+         {
+          message = "Broadcast rescheduled successfully",
+      broadcastId = broadcast.Id,
+         oldScheduledSendAt = oldScheduledTime,
+           newScheduledSendAt = broadcast.ScheduledSendAt,
+         status = broadcast.Status.ToString()
+      });
+            }
+         catch (Exception ex)
+            {
+          return StatusCode(500, new { message = "Error rescheduling broadcast: " + ex.Message });
+   }
+        }
+
+    /// <summary>
+        /// Get broadcast scheduler service status and statistics
+   /// </summary>
+        /// <returns>Information about the background scheduler service</returns>
+      [HttpGet("scheduler/status")]
+     public async Task<IActionResult> GetSchedulerStatus()
+        {
+  try
+    {
+          var totalScheduled = await _db.BroadcastMessages
+      .CountAsync(b => b.Status == BroadcastStatus.Scheduled);
+
+            var upcomingInNextHour = await _db.BroadcastMessages
+        .CountAsync(b => b.Status == BroadcastStatus.Scheduled &&
+          b.ScheduledSendAt != null &&
+     b.ScheduledSendAt <= DateTimeOffset.UtcNow.AddHours(1));
+
+                var upcomingInNext24Hours = await _db.BroadcastMessages
+            .CountAsync(b => b.Status == BroadcastStatus.Scheduled &&
+       b.ScheduledSendAt != null &&
+        b.ScheduledSendAt <= DateTimeOffset.UtcNow.AddDays(1));
+
+        var overdue = await _db.BroadcastMessages
+       .CountAsync(b => b.Status == BroadcastStatus.Scheduled &&
+        b.ScheduledSendAt != null &&
+                 b.ScheduledSendAt <= DateTimeOffset.UtcNow);
+
+        return Ok(new
+      {
+              schedulerInfo = new
    {
- return StatusCode(500, new { message = "Error getting statistics: " + ex.Message });
+          isRunning = true, // The service is registered as a background service
+         checkIntervalMinutes = 1,
+    lastCheckedAt = DateTimeOffset.UtcNow, // Approximate
+          description = "Background service checks for scheduled broadcasts every minute"
+ },
+     statistics = new
+        {
+      totalScheduledBroadcasts = totalScheduled,
+    upcomingInNextHour = upcomingInNextHour,
+             upcomingInNext24Hours = upcomingInNext24Hours,
+overdueBroadcasts = overdue
+         },
+          currentServerTime = DateTimeOffset.UtcNow
+     });
+   }
+            catch (Exception ex)
+       {
+        return StatusCode(500, new { message = "Error getting scheduler status: " + ex.Message });
      }
         }
 
-   private static string? ExtractJsonObject(string? s)
-    {
-            if (string.IsNullOrWhiteSpace(s)) return null;
-     var first = s.IndexOf('{');
-   var last = s.LastIndexOf('}');
-       if (first >= 0 && last > first)
- {
-      var candidate = s.Substring(first, last - first + 1);
-        // quick validity check
-try
-                {
- System.Text.Json.JsonDocument.Parse(candidate);
-   return candidate;
-}
-      catch
+        private static string? ExtractJsonObject(string? s)
+        {
+     if (string.IsNullOrWhiteSpace(s)) return null;
+  var first = s.IndexOf('{');
+            var last = s.LastIndexOf('}');
+  if (first >= 0 && last > first)
       {
- return null;
-              }
-    }
-   return null;
- }
+              var candidate = s.Substring(first, last - first + 1);
+   // quick validity check
+      try
+       {
+     System.Text.Json.JsonDocument.Parse(candidate);
+     return candidate;
+                }
+catch
+     {
+        return null;
+         }
+      }
+        return null;
+        }
     }
 
     internal static class StringExtensions

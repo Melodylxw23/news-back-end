@@ -24,7 +24,20 @@ namespace News_Back_end
         public DbSet<SourceDescriptionSetting> SourceDescriptionSettings { get; set; } = null!;
         public DbSet<FetchMetric> FetchMetrics { get; set; } = null!;
         public DbSet<PublicationDraft> PublicationDrafts { get; set; } = null!;
-        // ArticleLabel removed - not used
+        public DbSet<BroadcastDelivery> BroadcastDeliveries { get; set; } = null!;
+
+        // Analytics entities
+        public DbSet<BroadcastLinkClick> BroadcastLinkClicks { get; set; } = null!;
+        public DbSet<BroadcastAnalyticsSummary> BroadcastAnalyticsSummaries { get; set; } = null!;
+        public DbSet<TopicPerformanceMetric> TopicPerformanceMetrics { get; set; } = null!;
+        public DbSet<MemberEngagementProfile> MemberEngagementProfiles { get; set; } = null!;
+        public DbSet<DailyBroadcastMetric> DailyBroadcastMetrics { get; set; } = null!;
+
+        // Consultant insights preferences
+        public DbSet<ConsultantPreference> ConsultantPreferences { get; set; } = null!;
+
+        // Consultant insights send log (idempotency)
+        public DbSet<ConsultantInsightsSendLog> ConsultantInsightsSendLogs { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -108,6 +121,127 @@ namespace News_Back_end
                 .HasMany(b => b.SelectedArticles)
                 .WithMany(p => p.BroadcastMessages)
                 .UsingEntity(j => j.ToTable("BroadcastMessageArticles"));
+
+            // BroadcastDelivery relationships
+            modelBuilder.Entity<BroadcastDelivery>()
+                .HasOne(bd => bd.BroadcastMessage)
+                .WithMany()
+                .HasForeignKey(bd => bd.BroadcastMessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<BroadcastDelivery>()
+                .HasOne(bd => bd.Member)
+                .WithMany()
+                .HasForeignKey(bd => bd.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Ensure unique constraint: one delivery record per broadcast-member combination
+            modelBuilder.Entity<BroadcastDelivery>()
+                .HasIndex(bd => new { bd.BroadcastMessageId, bd.MemberId })
+                .IsUnique();
+
+            // BroadcastDelivery enums as strings
+            modelBuilder.Entity<BroadcastDelivery>()
+                .Property(bd => bd.Status)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(50)");
+
+            modelBuilder.Entity<BroadcastDelivery>()
+                .Property(bd => bd.BounceType)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(50)");
+
+            // BroadcastLinkClick relationships
+            modelBuilder.Entity<BroadcastLinkClick>()
+                .HasOne(lc => lc.BroadcastDelivery)
+                .WithMany(bd => bd.LinkClicks)
+                .HasForeignKey(lc => lc.BroadcastDeliveryId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<BroadcastLinkClick>()
+                .HasOne(lc => lc.PublicationDraft)
+                .WithMany()
+                .HasForeignKey(lc => lc.PublicationDraftId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            // BroadcastAnalyticsSummary relationship
+            modelBuilder.Entity<BroadcastAnalyticsSummary>()
+                .HasOne(bas => bas.BroadcastMessage)
+                .WithMany()
+                .HasForeignKey(bas => bas.BroadcastMessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<BroadcastAnalyticsSummary>()
+                .HasIndex(bas => bas.BroadcastMessageId)
+                .IsUnique();
+
+            // TopicPerformanceMetric relationships
+            modelBuilder.Entity<TopicPerformanceMetric>()
+                .HasOne(tpm => tpm.InterestTag)
+                .WithMany()
+                .HasForeignKey(tpm => tpm.InterestTagId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<TopicPerformanceMetric>()
+                .HasOne(tpm => tpm.IndustryTag)
+                .WithMany()
+                .HasForeignKey(tpm => tpm.IndustryTagId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // Unique index for daily topic metrics
+            modelBuilder.Entity<TopicPerformanceMetric>()
+                .HasIndex(tpm => new { tpm.MetricDate, tpm.InterestTagId, tpm.IndustryTagId });
+
+            // MemberEngagementProfile relationship
+            modelBuilder.Entity<MemberEngagementProfile>()
+                .HasOne(mep => mep.Member)
+                .WithMany()
+                .HasForeignKey(mep => mep.MemberId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<MemberEngagementProfile>()
+                .HasIndex(mep => mep.MemberId)
+                .IsUnique();
+
+            // DailyBroadcastMetric index
+            modelBuilder.Entity<DailyBroadcastMetric>()
+                .HasIndex(dbm => dbm.MetricDate)
+                .IsUnique();
+
+            // ConsultantPreference relationship + unique per consultant
+            modelBuilder.Entity<ConsultantPreference>()
+                .HasOne(p => p.ConsultantUser)
+                .WithMany()
+                .HasForeignKey(p => p.ConsultantUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ConsultantPreference>()
+                .HasIndex(p => p.ConsultantUserId)
+                .IsUnique();
+
+            modelBuilder.Entity<ConsultantPreference>()
+                .Property(p => p.Frequency)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(20)");
+
+            // ConsultantInsightsSendLog relationship + uniqueness (ConsultantUserId, Period, PeriodDateUtc)
+            modelBuilder.Entity<ConsultantInsightsSendLog>()
+                .HasOne(l => l.ConsultantUser)
+                .WithMany()
+                .HasForeignKey(l => l.ConsultantUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ConsultantInsightsSendLog>()
+                .Property(l => l.Period)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(20)");
+
+            modelBuilder.Entity<ConsultantInsightsSendLog>()
+                .HasIndex(l => new { l.ConsultantUserId, l.Period, l.PeriodDateUtc })
+                .IsUnique();
         }
 
 
