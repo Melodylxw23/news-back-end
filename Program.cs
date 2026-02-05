@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using News_Back_end;
 using News_Back_end.Models;
 using News_Back_end.Services;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 
 
@@ -205,6 +206,36 @@ if (!string.IsNullOrWhiteSpace(openAIApiKey))
         c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIApiKey}");
         // Increase default timeout to accommodate longer OpenAI calls
         c.Timeout = TimeSpan.FromSeconds(120);
+    });
+}
+
+// register OpenAI chat client
+builder.Services.AddHttpClient<OpenAIChatClient>(c =>
+{
+    // Prefer recommendation key/base if provided, otherwise fall back to primary OpenAI settings
+    var recKey = builder.Configuration["OpenAIRecommendation:ApiKey"]; 
+    var recBase = builder.Configuration["OpenAIRecommendation:BaseUrl"];
+    var primaryKey = builder.Configuration["OpenAI:ApiKey"];
+    var primaryBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
+
+    c.BaseAddress = new Uri(!string.IsNullOrWhiteSpace(recBase) ? recBase : primaryBase);
+    c.Timeout = TimeSpan.FromSeconds(120);
+
+    var keyToUse = !string.IsNullOrWhiteSpace(recKey) ? recKey : primaryKey;
+    if (!string.IsNullOrWhiteSpace(keyToUse))
+        c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", keyToUse);
+});
+
+// Register OpenAIRecommendation named HttpClient (prefer recommendation key when available)
+var openAIRecKey = builder.Configuration["OpenAIRecommendation:ApiKey"];
+var openAIRecBase = builder.Configuration["OpenAIRecommendation:BaseUrl"] ?? builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
+if (!string.IsNullOrWhiteSpace(openAIRecKey))
+{
+    builder.Services.AddHttpClient("OpenAIRecommendation", c =>
+    {
+        c.BaseAddress = new Uri(openAIRecBase);
+        c.Timeout = TimeSpan.FromSeconds(120);
+        c.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", openAIRecKey);
     });
 }
 

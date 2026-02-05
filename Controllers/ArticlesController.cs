@@ -13,6 +13,7 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using static News_Back_end.Controllers.SourcesController;
+using System.Security.Claims;
 
 namespace News_Back_end.Controllers
 {
@@ -616,6 +617,97 @@ namespace News_Back_end.Controllers
             }
 
             return Ok(results);
+        }
+
+        // GET: api/articles/published?page=1&pageSize=20
+        [HttpGet("published")]
+        public async Task<IActionResult> Published([FromQuery] int page =1, [FromQuery] int pageSize =20)
+        {
+            if (page <=0) page =1;
+            if (pageSize <=0 || pageSize >100) pageSize =20;
+
+            var q = _db.PublicationDrafts
+                .AsNoTracking()
+                .Include(d => d.NewsArticle)
+                .Include(d => d.IndustryTag)
+                .Include(d => d.InterestTags)
+                .Where(d => d.IsPublished && (d.PublishedAt == null || d.PublishedAt <= DateTime.Now))
+                .OrderByDescending(d => d.PublishedAt ?? d.NewsArticle.PublishedAt);
+
+            var total = await q.LongCountAsync();
+            var items = await q.Skip((page -1) * pageSize).Take(pageSize).ToListAsync();
+
+            var results = items.Select(d => new
+            {
+                ArticleId = d.NewsArticleId,
+                TitleZH = d.NewsArticle?.TitleZH,
+                TitleEN = d.NewsArticle?.TitleEN,
+                SummaryZH = d.NewsArticle?.SummaryZH,
+                SummaryEN = d.NewsArticle?.SummaryEN,
+                HeroImageUrl = d.HeroImageUrl,
+                PublishedAt = d.PublishedAt ?? d.NewsArticle?.PublishedAt,
+                IndustryTag = d.IndustryTag == null ? null : new { d.IndustryTag.IndustryTagId, d.IndustryTag.NameEN, d.IndustryTag.NameZH },
+                InterestTags = d.InterestTags.Select(t => new { t.InterestTagId, t.NameEN, t.NameZH })
+            }).ToList();
+
+            return Ok(new PagedResult<object> { Page = page, PageSize = pageSize, Total = total, Items = results.Cast<object>().ToList() });
+        }
+
+        // GET: api/articles/feed?page=1&pageSize=20 (Member only)
+        [HttpGet("feed")]
+        [Authorize(Roles = "Member")]
+        public async Task<IActionResult> MemberFeed([FromQuery] int page =1, [FromQuery] int pageSize =20)
+        {
+            if (page <=0) page =1;
+            if (pageSize <=0 || pageSize >100) pageSize =20;
+
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+            var member = await _db.Members
+                .AsNoTracking()
+                .Include(m => m.Interests)
+                .Include(m => m.IndustryTags)
+                .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+
+            if (member == null) return NotFound(new { message = "Member profile not found." });
+
+            var interestIds = member.Interests?.Select(i => i.InterestTagId).ToList() ?? new List<int>();
+            var industryIds = member.IndustryTags?.Select(i => i.IndustryTagId).ToList() ?? new List<int>();
+
+            // If member has no preferences, return latest published articles
+            IQueryable<PublicationDraft> q = _db.PublicationDrafts
+                .AsNoTracking()
+                .Include(d => d.NewsArticle)
+                .Include(d => d.IndustryTag)
+                .Include(d => d.InterestTags)
+                .Where(d => d.IsPublished && (d.PublishedAt == null || d.PublishedAt <= DateTime.Now));
+
+            if (interestIds.Count >0 || industryIds.Count >0)
+            {
+                q = q.Where(d => d.InterestTags.Any(t => interestIds.Contains(t.InterestTagId))
+ || (d.IndustryTagId != null && industryIds.Contains(d.IndustryTagId.Value)));
+            }
+
+            q = q.OrderByDescending(d => d.PublishedAt ?? d.NewsArticle.PublishedAt);
+
+            var total = await q.LongCountAsync();
+            var items = await q.Skip((page -1) * pageSize).Take(pageSize).ToListAsync();
+
+            var results = items.Select(d => new
+            {
+                ArticleId = d.NewsArticleId,
+                TitleZH = d.NewsArticle?.TitleZH,
+                TitleEN = d.NewsArticle?.TitleEN,
+                SummaryZH = d.NewsArticle?.SummaryZH,
+                SummaryEN = d.NewsArticle?.SummaryEN,
+                HeroImageUrl = d.HeroImageUrl,
+                PublishedAt = d.PublishedAt ?? d.NewsArticle?.PublishedAt,
+                IndustryTag = d.IndustryTag == null ? null : new { d.IndustryTag.IndustryTagId, d.IndustryTag.NameEN, d.IndustryTag.NameZH },
+                InterestTags = d.InterestTags.Select(t => new { t.InterestTagId, t.NameEN, t.NameZH })
+            }).ToList();
+
+            return Ok(new PagedResult<object> { Page = page, PageSize = pageSize, Total = total, Items = results.Cast<object>().ToList() });
         }
     }
 }

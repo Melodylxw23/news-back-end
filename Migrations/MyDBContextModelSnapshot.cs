@@ -283,6 +283,40 @@ namespace News_Back_end.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.ArticleInteraction", b =>
+                {
+                    b.Property<int>("ArticleInteractionId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ArticleInteractionId"));
+
+                    b.Property<string>("ApplicationUserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Keywords")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("NewsArticleId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("ArticleInteractionId");
+
+                    b.ToTable("ArticleInteractions", (string)null);
+                });
+
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastMessage", b =>
                 {
                     b.Property<int>("Id")
@@ -778,6 +812,28 @@ namespace News_Back_end.Migrations
                     b.ToTable("SourceDescriptionSettings");
                 });
 
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.TopicEmbedding", b =>
+                {
+                    b.Property<int>("TopicEmbeddingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TopicEmbeddingId"));
+
+                    b.Property<string>("EmbeddingJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("InterestTagId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TopicEmbeddingId");
+
+                    b.ToTable("TopicEmbeddings", (string)null);
+                });
+
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
                 {
                     b.Property<int>("Id")
@@ -806,6 +862,28 @@ namespace News_Back_end.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TranslationAudits");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.UserEmbedding", b =>
+                {
+                    b.Property<int>("UserEmbeddingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("UserEmbeddingId"));
+
+                    b.Property<string>("ApplicationUserId")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EmbeddingJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("UserEmbeddingId");
+
+                    b.ToTable("UserEmbeddings", (string)null);
                 });
 
             modelBuilder.Entity("IndustryTagMember", b =>

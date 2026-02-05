@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.AspNetCore.Hosting;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace News_Back_end.Controllers
 {
@@ -20,18 +22,20 @@ namespace News_Back_end.Controllers
  private readonly MyDBContext _db;
  private readonly IImageGenerationService? _imageService;
  private readonly IPublicationService _pubService;
-        private readonly IWebHostEnvironment _env;
+ private readonly IWebHostEnvironment _env;
+ private readonly OpenAIChatClient _chat;
 
-        public PublishController(MyDBContext db, IPublicationService pubService, IWebHostEnvironment env, IImageGenerationService? imageService = null)
-        {
-            _db = db;
-            _imageService = imageService;
-            _pubService = pubService;
-            _env = env;
-        }
+ public PublishController(MyDBContext db, IPublicationService pubService, IWebHostEnvironment env, IImageGenerationService? imageService = null, OpenAIChatClient? chat = null)
+ {
+ _db = db;
+ _imageService = imageService;
+ _pubService = pubService;
+ _env = env;
+ _chat = chat!; // may be null in some registrations, but controller expects chat when AI used
+ }
 
-        // GET /api/publish/{id}
-        [HttpGet("{id:int}")]
+ // GET /api/publish/{id}
+ [HttpGet("{id:int}")]
  [Authorize(Roles = "Consultant")]
  public async Task<IActionResult> GetDraft(int id)
  {
@@ -387,5 +391,133 @@ namespace News_Back_end.Controllers
  await _db.SaveChangesAsync();
  return Ok(results);
  }
+        // POST /api/publish/suggest
+        // Uses OpenAI to suggest industry and interest tags for a list of articles
+        [HttpPost("suggest")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> SuggestPublish([FromBody] SuggestPublishDto dto)
+        {
+            if (dto == null || dto.ArticleIds == null || dto.ArticleIds.Count == 0)
+                return BadRequest("ArticleIds are required.");
+
+            // Load articles
+            var articles = await _db.NewsArticles
+                .Where(a => dto.ArticleIds.Contains(a.NewsArticleId))
+                .ToDictionaryAsync(a => a.NewsArticleId);
+
+            // Load tag metadata
+            var industryTags = await _db.IndustryTags.ToListAsync();
+            var interestTags = await _db.InterestTags.ToListAsync();
+
+            // Prepare choice lists for the prompt
+            var industryNames = industryTags.Select(i => i.NameEN).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToList();
+            var interestNames = interestTags.Select(i => i.NameEN).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToList();
+
+            // Build a combined prompt feeding the list of choices so AI selects from them
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("You are an assistant that maps articles to one industry and up to3 interest topics. Respond with JSON only.");
+            sb.AppendLine("Available industries:");
+            sb.AppendLine(JsonSerializer.Serialize(industryNames));
+            sb.AppendLine("Available interests:");
+            sb.AppendLine(JsonSerializer.Serialize(interestNames));
+            sb.AppendLine();
+            sb.AppendLine("For each article provided, return an object with keys: articleId, industry (choose one exact name from Available industries), interests (array of up to3 exact names from Available interests), rationale (one short sentence). Return a JSON array named suggestions.");
+
+            // Add articles content to user prompt
+            sb.AppendLine();
+            sb.AppendLine("Articles:");
+            foreach (var id in dto.ArticleIds)
+            {
+                if (articles.TryGetValue(id, out var a))
+                {
+                    var title = a.TitleEN ?? a.TitleZH ?? string.Empty;
+                    var summary = a.SummaryEN ?? a.SummaryZH ?? (a.OriginalContent?.Substring(0, Math.Min(400, (a.OriginalContent ?? string.Empty).Length)) ?? string.Empty);
+                    sb.AppendLine(JsonSerializer.Serialize(new { articleId = id, title, summary }));
+                }
+            }
+
+            var userPrompt = sb.ToString();
+
+            string? aiText;
+            try
+            {
+                aiText = await _chat.CreateChatCompletionAsync("You are a precise classifier. Output JSON only.", userPrompt, maxTokens: 800, temperature: 0.2);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(502, new { error = "OpenAI call failed", detail = ex.Message });
+            }
+
+            if (string.IsNullOrWhiteSpace(aiText)) return StatusCode(502, new { error = "Empty response from OpenAI" });
+
+            var cleaned = aiText.Trim();
+            // try extract JSON from code fences
+            if (cleaned.StartsWith("```"))
+            {
+                var match = Regex.Match(cleaned, "```(?:json)?\\s*\\n?([\\s\\S]*?)\\n?```", RegexOptions.Singleline);
+                if (match.Success && match.Groups.Count > 1) cleaned = match.Groups[1].Value.Trim();
+            }
+
+            // Try parse
+            try
+            {
+                using var doc = JsonDocument.Parse(cleaned);
+                var root = doc.RootElement;
+                // Expecting { "suggestions": [ ... ] } or an array
+                JsonElement suggestionsElem;
+                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("suggestions", out suggestionsElem))
+                {
+                    // ok
+                }
+                else if (root.ValueKind == JsonValueKind.Array)
+                {
+                    // wrap into suggestions
+                    var arr = root;
+                    var result = new List<object>();
+                    foreach (var item in arr.EnumerateArray())
+                    {
+                        result.Add(item);
+                    }
+                    return Ok(new { raw = aiText, suggestions = result });
+                }
+
+                // Map suggestion names to tag ids where possible and return
+                var suggestions = new List<object>();
+                var arrElem = root.ValueKind == JsonValueKind.Object ? root.GetProperty("suggestions") : root;
+                foreach (var item in arrElem.EnumerateArray())
+                {
+                    var aid = item.GetProperty("articleId").GetInt32();
+                    var industryName = item.TryGetProperty("industry", out var iname) ? iname.GetString() ?? string.Empty : string.Empty;
+                    var interestsList = new List<string>();
+                    if (item.TryGetProperty("interests", out var iarr) && iarr.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var it in iarr.EnumerateArray()) if (it.ValueKind == JsonValueKind.String) interestsList.Add(it.GetString() ?? string.Empty);
+                    }
+                    var rationale = item.TryGetProperty("rationale", out var r) ? r.GetString() ?? string.Empty : string.Empty;
+
+                    var matchedIndustry = industryTags.FirstOrDefault(t => string.Equals(t.NameEN, industryName, StringComparison.OrdinalIgnoreCase) || string.Equals(t.NameZH, industryName, StringComparison.OrdinalIgnoreCase));
+                    var matchedInterestIds = interestTags.Where(t => interestsList.Any(n => string.Equals(n, t.NameEN, StringComparison.OrdinalIgnoreCase) || string.Equals(n, t.NameZH, StringComparison.OrdinalIgnoreCase))).Select(t => t.InterestTagId).ToList();
+
+                    suggestions.Add(new
+                    {
+                        articleId = aid,
+                        industry = new { name = industryName, industryTagId = matchedIndustry?.IndustryTagId },
+                        interests = interestsList.Select((n, idx) => new { name = n, interestTagId = matchedInterestIds.ElementAtOrDefault(idx) }).ToList(),
+                        rationale
+                    });
+                }
+
+                return Ok(new { raw = aiText, suggestions });
+            }
+            catch (JsonException)
+            {
+                // parsing failed - return raw
+                return Ok(new { raw = aiText, parsed = (object?)null });
+            }
+        }
+ }
+ public class SuggestPublishDto
+ {
+ public List<int> ArticleIds { get; set; } = new List<int>();
  }
 }
