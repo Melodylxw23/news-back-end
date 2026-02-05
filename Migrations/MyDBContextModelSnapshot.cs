@@ -295,38 +295,237 @@ namespace News_Back_end.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ArticleInteraction", b =>
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastAnalyticsSummary", b =>
                 {
-                    b.Property<int>("ArticleInteractionId")
+                    b.Property<int>("BroadcastAnalyticsSummaryId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ArticleInteractionId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("BroadcastAnalyticsSummaryId"));
 
-                    b.Property<string>("ApplicationUserId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("DurationSeconds")
+                    b.Property<int>("BroadcastMessageId")
                         .HasColumnType("int");
 
-                    b.Property<string>("Keywords")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<double>("ClickRate")
+                        .HasColumnType("float");
 
-                    b.Property<int?>("MemberId")
-                        .HasColumnType("int");
+                    b.Property<double>("ClickToOpenRate")
+                        .HasColumnType("float");
 
-                    b.Property<int?>("NewsArticleId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("Timestamp")
+                    b.Property<DateTime>("ComputedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("Type")
+                    b.Property<double>("DeliveryRate")
+                        .HasColumnType("float");
+
+                    b.Property<int>("DesktopOpens")
                         .HasColumnType("int");
 
-                    b.HasKey("ArticleInteractionId");
+                    b.Property<string>("EngagementByCountryJson")
+                        .HasColumnType("nvarchar(max)");
 
-                    b.ToTable("ArticleInteractions", (string)null);
+                    b.Property<string>("EngagementByIndustryJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EngagementByInterestJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("EngagementByLanguageJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("FirstOpenAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastOpenAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MobileOpens")
+                        .HasColumnType("int");
+
+                    b.Property<double>("OpenRate")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime?>("PeakEngagementHour")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("TabletOpens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalBounced")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalClicks")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalDelivered")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalOpens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalSent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UniqueClicks")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UniqueOpens")
+                        .HasColumnType("int");
+
+                    b.HasKey("BroadcastAnalyticsSummaryId");
+
+                    b.HasIndex("BroadcastMessageId")
+                        .IsUnique();
+
+                    b.ToTable("BroadcastAnalyticsSummaries");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastDelivery", b =>
+                {
+                    b.Property<int>("BroadcastDeliveryId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("BroadcastDeliveryId"));
+
+                    b.Property<string>("BounceReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BounceType")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("BroadcastMessageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ClickCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DeliveryError")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("DeliverySuccess")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("DeviceType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("EmailClient")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("EmailOpened")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("EstimatedReadTimeSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("FirstClickedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FirstOpenedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("HasClicked")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("IpAddress")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("LastClickedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastOpenedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OpenCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OperatingSystem")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RecipientEmail")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("Unsubscribed")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UnsubscribedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("BroadcastDeliveryId");
+
+                    b.HasIndex("MemberId");
+
+                    b.HasIndex("BroadcastMessageId", "MemberId")
+                        .IsUnique();
+
+                    b.ToTable("BroadcastDeliveries");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastLinkClick", b =>
+                {
+                    b.Property<int>("BroadcastLinkClickId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("BroadcastLinkClickId"));
+
+                    b.Property<int>("BroadcastDeliveryId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ClickedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DeviceType")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("EmailClient")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("IpAddress")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("LinkIdentifier")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("OriginalUrl")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int?>("PublicationDraftId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserAgent")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("BroadcastLinkClickId");
+
+                    b.HasIndex("BroadcastDeliveryId");
+
+                    b.HasIndex("PublicationDraftId");
+
+                    b.ToTable("BroadcastLinkClicks");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastMessage", b =>
@@ -375,6 +574,140 @@ namespace News_Back_end.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("BroadcastMessages");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsSendLog", b =>
+                {
+                    b.Property<int>("ConsultantInsightsSendLogId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ConsultantInsightsSendLogId"));
+
+                    b.Property<string>("ConsultantUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Period")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("PeriodDateUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTimeOffset>("SentAtUtc")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("bit");
+
+                    b.HasKey("ConsultantInsightsSendLogId");
+
+                    b.HasIndex("ConsultantUserId", "Period", "PeriodDateUtc")
+                        .IsUnique();
+
+                    b.ToTable("ConsultantInsightsSendLogs");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantPreference", b =>
+                {
+                    b.Property<int>("ConsultantPreferenceId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ConsultantPreferenceId"));
+
+                    b.Property<string>("ConsultantUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("Frequency")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("IndustriesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PreferredTimeMinutesUtc")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TerritoriesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("ConsultantPreferenceId");
+
+                    b.HasIndex("ConsultantUserId")
+                        .IsUnique();
+
+                    b.ToTable("ConsultantPreferences");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.DailyBroadcastMetric", b =>
+                {
+                    b.Property<int>("DailyBroadcastMetricId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("DailyBroadcastMetricId"));
+
+                    b.Property<double>("AverageClickRate")
+                        .HasColumnType("float");
+
+                    b.Property<double>("AverageOpenRate")
+                        .HasColumnType("float");
+
+                    b.Property<int>("BroadcastsSent")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("MetricDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("NewSubscribersEngaged")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalClicks")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalEmailsDelivered")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalEmailsSent")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalOpens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UniqueRecipientsReached")
+                        .HasColumnType("int");
+
+                    b.HasKey("DailyBroadcastMetricId");
+
+                    b.HasIndex("MetricDate")
+                        .IsUnique();
+
+                    b.ToTable("DailyBroadcastMetrics");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchMetric", b =>
@@ -529,6 +862,75 @@ namespace News_Back_end.Migrations
                         .HasFilter("[ApplicationUserId] IS NOT NULL");
 
                     b.ToTable("Members");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.MemberEngagementProfile", b =>
+                {
+                    b.Property<int>("MemberEngagementProfileId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("MemberEngagementProfileId"));
+
+                    b.Property<string>("EngagementLevel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<double>("FrequencyScore")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime?>("LastEmailOpenedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastEmailReceivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastLinkClickedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<double>("LifetimeClickRate")
+                        .HasColumnType("float");
+
+                    b.Property<double>("LifetimeOpenRate")
+                        .HasColumnType("float");
+
+                    b.Property<int>("MemberId")
+                        .HasColumnType("int");
+
+                    b.Property<double>("OverallEngagementScore")
+                        .HasColumnType("float");
+
+                    b.Property<int?>("PreferredDayOfWeek")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PreferredHourOfDay")
+                        .HasColumnType("int");
+
+                    b.Property<double>("RecencyScore")
+                        .HasColumnType("float");
+
+                    b.Property<string>("TopEngagedTopicsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("TotalEmailsOpened")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalEmailsReceived")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalLinksClicked")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("MemberEngagementProfileId");
+
+                    b.HasIndex("MemberId")
+                        .IsUnique();
+
+                    b.ToTable("MemberEngagementProfiles");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.NewsArticle", b =>
@@ -821,26 +1223,56 @@ namespace News_Back_end.Migrations
                     b.ToTable("SourceDescriptionSettings");
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.TopicEmbedding", b =>
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.TopicPerformanceMetric", b =>
                 {
-                    b.Property<int>("TopicEmbeddingId")
+                    b.Property<int>("TopicPerformanceMetricId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int");
 
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TopicEmbeddingId"));
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("TopicPerformanceMetricId"));
 
-                    b.Property<string>("EmbeddingJson")
-                        .HasColumnType("nvarchar(max)");
+                    b.Property<double>("AverageClickRate")
+                        .HasColumnType("float");
 
-                    b.Property<int>("InterestTagId")
+                    b.Property<double>("AverageOpenRate")
+                        .HasColumnType("float");
+
+                    b.Property<int>("BroadcastCount")
                         .HasColumnType("int");
 
-                    b.Property<DateTime>("LastUpdated")
+                    b.Property<DateTime>("ComputedAt")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("TopicEmbeddingId");
+                    b.Property<double>("EngagementScore")
+                        .HasColumnType("float");
 
-                    b.ToTable("TopicEmbeddings", (string)null);
+                    b.Property<int?>("IndustryTagId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("InterestTagId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("MetricDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("TotalClicks")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalOpens")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalSent")
+                        .HasColumnType("int");
+
+                    b.HasKey("TopicPerformanceMetricId");
+
+                    b.HasIndex("IndustryTagId");
+
+                    b.HasIndex("InterestTagId");
+
+                    b.HasIndex("MetricDate", "InterestTagId", "IndustryTagId");
+
+                    b.ToTable("TopicPerformanceMetrics");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
@@ -871,6 +1303,21 @@ namespace News_Back_end.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("TranslationAudits");
+                });
+
+            modelBuilder.Entity("BroadcastMessagePublicationDraft", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.BroadcastMessage", null)
+                        .WithMany()
+                        .HasForeignKey("BroadcastMessagesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("News_Back_end.Models.SQLServer.PublicationDraft", null)
+                        .WithMany()
+                        .HasForeignKey("SelectedArticlesPublicationDraftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("IndustryTagMember", b =>
@@ -969,6 +1416,76 @@ namespace News_Back_end.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastAnalyticsSummary", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.BroadcastMessage", "BroadcastMessage")
+                        .WithMany()
+                        .HasForeignKey("BroadcastMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BroadcastMessage");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastDelivery", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.BroadcastMessage", "BroadcastMessage")
+                        .WithMany()
+                        .HasForeignKey("BroadcastMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("News_Back_end.Models.SQLServer.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BroadcastMessage");
+
+                    b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastLinkClick", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.BroadcastDelivery", "BroadcastDelivery")
+                        .WithMany("LinkClicks")
+                        .HasForeignKey("BroadcastDeliveryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("News_Back_end.Models.SQLServer.PublicationDraft", "PublicationDraft")
+                        .WithMany()
+                        .HasForeignKey("PublicationDraftId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("BroadcastDelivery");
+
+                    b.Navigation("PublicationDraft");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsSendLog", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ConsultantUser")
+                        .WithMany()
+                        .HasForeignKey("ConsultantUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ConsultantUser");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantPreference", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ConsultantUser")
+                        .WithMany()
+                        .HasForeignKey("ConsultantUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ConsultantUser");
+                });
+
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>
                 {
                     b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ApplicationUser")
@@ -976,6 +1493,17 @@ namespace News_Back_end.Migrations
                         .HasForeignKey("News_Back_end.Models.SQLServer.Member", "ApplicationUserId");
 
                     b.Navigation("ApplicationUser");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.MemberEngagementProfile", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.Member", "Member")
+                        .WithMany()
+                        .HasForeignKey("MemberId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Member");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.NewsArticle", b =>
@@ -1015,9 +1543,31 @@ namespace News_Back_end.Migrations
                     b.Navigation("Source");
                 });
 
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.TopicPerformanceMetric", b =>
+                {
+                    b.HasOne("News_Back_end.Models.SQLServer.IndustryTag", "IndustryTag")
+                        .WithMany()
+                        .HasForeignKey("IndustryTagId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("News_Back_end.Models.SQLServer.InterestTag", "InterestTag")
+                        .WithMany()
+                        .HasForeignKey("InterestTagId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("IndustryTag");
+
+                    b.Navigation("InterestTag");
+                });
+
             modelBuilder.Entity("News_Back_end.Models.SQLServer.ApplicationUser", b =>
                 {
                     b.Navigation("Member");
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastDelivery", b =>
+                {
+                    b.Navigation("LinkClicks");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.IndustryTag", b =>

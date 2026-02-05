@@ -1,158 +1,166 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using News_Back_end.DTOs;
 using News_Back_end.Models.SQLServer;
 using News_Back_end.Services;
 using System;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
 using Microsoft.AspNetCore.Hosting;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace News_Back_end.Controllers
 {
- [ApiController]
- [Route("api/[controller]")]
- public class PublishController : ControllerBase
- {
- private readonly MyDBContext _db;
- private readonly IImageGenerationService? _imageService;
- private readonly IPublicationService _pubService;
- private readonly IWebHostEnvironment _env;
- private readonly OpenAIChatClient _chat;
+    [ApiController]
+    [Route("api/[controller]")]
+    public class PublishController : ControllerBase
+    {
+        private readonly MyDBContext _db;
+        private readonly IImageGenerationService? _imageService;
+        private readonly IPublicationService _pubService;
+        private readonly IConfiguration _config;
+        private readonly IHttpClientFactory _httpFactory;
+        private readonly ILogger<PublishController> _logger;
+        private readonly IWebHostEnvironment _env;
 
- public PublishController(MyDBContext db, IPublicationService pubService, IWebHostEnvironment env, IImageGenerationService? imageService = null, OpenAIChatClient? chat = null)
- {
- _db = db;
- _imageService = imageService;
- _pubService = pubService;
- _env = env;
- _chat = chat!; // may be null in some registrations, but controller expects chat when AI used
- }
+        public PublishController(MyDBContext db, IPublicationService pubService, IConfiguration config, IHttpClientFactory httpFactory, ILogger<PublishController> logger, IImageGenerationService? imageService = null)
+        {
+            _db = db;
+            _imageService = imageService;
+            _pubService = pubService;
+            _config = config;
+            _httpFactory = httpFactory;
+            _logger = logger;
+        }
 
- // GET /api/publish/{id}
- [HttpGet("{id:int}")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> GetDraft(int id)
- {
- var article = await _db.NewsArticles.FindAsync(id);
- if (article == null) return NotFound();
+        // GET /api/publish/{id}
+        [HttpGet("{id:int}")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> GetDraft(int id)
+        {
+            var article = await _db.NewsArticles.FindAsync(id);
+            if (article == null) return NotFound();
 
- var draft = await _db.PublicationDrafts
- .Include(d => d.IndustryTag)
- .Include(d => d.InterestTags)
- .FirstOrDefaultAsync(d => d.NewsArticleId == id);
+            var draft = await _db.PublicationDrafts
+            .Include(d => d.IndustryTag)
+            .Include(d => d.InterestTags)
+            .FirstOrDefaultAsync(d => d.NewsArticleId == id);
 
- var industries = await _db.IndustryTags.Select(i => new { i.IndustryTagId, i.NameEN, i.NameZH }).ToListAsync();
- var interests = await _db.InterestTags.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH }).ToListAsync();
+            var industries = await _db.IndustryTags.Select(i => new { i.IndustryTagId, i.NameEN, i.NameZH }).ToListAsync();
+            var interests = await _db.InterestTags.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH }).ToListAsync();
 
- return Ok(new { article, draft, industries, interests });
- }
+            return Ok(new { article, draft, industries, interests });
+        }
 
- // PATCH /api/publish/{id}
- [HttpPatch("{id:int}")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> SaveDraft(int id, [FromBody] PublishArticleDto dto)
- {
- if (id != dto.NewsArticleId) return BadRequest("id mismatch");
+        // PATCH /api/publish/{id}
+        [HttpPatch("{id:int}")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> SaveDraft(int id, [FromBody] PublishArticleDto dto)
+        {
+            if (id != dto.NewsArticleId) return BadRequest("id mismatch");
 
- var article = await _db.NewsArticles.FindAsync(id);
- if (article == null) return NotFound();
+            var article = await _db.NewsArticles.FindAsync(id);
+            if (article == null) return NotFound();
 
- var draft = await _db.PublicationDrafts
- .Include(d => d.IndustryTag)
- .Include(d => d.InterestTags)
- .FirstOrDefaultAsync(d => d.NewsArticleId == id);
+            var draft = await _db.PublicationDrafts
+            .Include(d => d.IndustryTag)
+            .Include(d => d.InterestTags)
+            .FirstOrDefaultAsync(d => d.NewsArticleId == id);
 
- if (draft == null)
- {
- draft = new PublicationDraft
- {
- NewsArticleId = id,
- CreatedBy = User?.Identity?.Name ?? "consultant",
- CreatedAt = DateTime.Now
- };
- _db.PublicationDrafts.Add(draft);
- }
+            if (draft == null)
+            {
+                draft = new PublicationDraft
+                {
+                    NewsArticleId = id,
+                    CreatedBy = User?.Identity?.Name ?? "consultant",
+                    CreatedAt = DateTime.Now
+                };
+                _db.PublicationDrafts.Add(draft);
+            }
 
- draft.HeroImageUrl = dto.HeroImageUrl;
- draft.HeroImageAlt = dto.HeroImageAlt;
- draft.HeroImageSource = dto.HeroImageSource;
- draft.FullContentEN = dto.FullContentEN;
- draft.FullContentZH = dto.FullContentZH;
- draft.UpdatedAt = DateTime.Now;
+            draft.HeroImageUrl = dto.HeroImageUrl;
+            draft.HeroImageAlt = dto.HeroImageAlt;
+            draft.HeroImageSource = dto.HeroImageSource;
+            draft.FullContentEN = dto.FullContentEN;
+            draft.FullContentZH = dto.FullContentZH;
+            draft.UpdatedAt = DateTime.Now;
 
- // set single industry tag
- if (dto.IndustryTagId.HasValue)
- {
- var industry = await _db.IndustryTags.FindAsync(dto.IndustryTagId.Value);
- if (industry == null) return BadRequest("invalid industry tag");
- draft.IndustryTag = industry;
- draft.IndustryTagId = industry.IndustryTagId;
- }
- else
- {
- draft.IndustryTag = null;
- draft.IndustryTagId = null;
- }
+            // set single industry tag
+            if (dto.IndustryTagId.HasValue)
+            {
+                var industry = await _db.IndustryTags.FindAsync(dto.IndustryTagId.Value);
+                if (industry == null) return BadRequest("invalid industry tag");
+                draft.IndustryTag = industry;
+                draft.IndustryTagId = industry.IndustryTagId;
+            }
+            else
+            {
+                draft.IndustryTag = null;
+                draft.IndustryTagId = null;
+            }
 
- // update interest tags many-to-many
- draft.InterestTags.Clear();
- if (dto.InterestTagIds != null && dto.InterestTagIds.Count >0)
- {
- var tags = await _db.InterestTags.Where(t => dto.InterestTagIds.Contains(t.InterestTagId)).ToListAsync();
- foreach (var t in tags) draft.InterestTags.Add(t);
- }
+            // update interest tags many-to-many
+            draft.InterestTags.Clear();
+            if (dto.InterestTagIds != null && dto.InterestTagIds.Count > 0)
+            {
+                var tags = await _db.InterestTags.Where(t => dto.InterestTagIds.Contains(t.InterestTagId)).ToListAsync();
+                foreach (var t in tags) draft.InterestTags.Add(t);
+            }
 
- // update schedule
- draft.ScheduledAt = dto.ScheduledAt;
+            // update schedule
+            draft.ScheduledAt = dto.ScheduledAt;
 
- await _db.SaveChangesAsync();
- return Ok(new { message = "Draft saved." });
- }
+            await _db.SaveChangesAsync();
+            return Ok(new { message = "Draft saved." });
+        }
 
- // POST /api/publish/{id}/publish
- [HttpPost("{id:int}/publish")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> Publish(int id, [FromBody] PublishActionDto action)
- {
- if (id != action.NewsArticleId) return BadRequest("id mismatch");
+        // POST /api/publish/{id}/publish
+        [HttpPost("{id:int}/publish")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> Publish(int id, [FromBody] PublishActionDto action)
+        {
+            if (id != action.NewsArticleId) return BadRequest("id mismatch");
 
- var draft = await _db.PublicationDrafts
- .Include(d => d.IndustryTag)
- .Include(d => d.InterestTags)
- .FirstOrDefaultAsync(d => d.NewsArticleId == id);
+            var draft = await _db.PublicationDrafts
+            .Include(d => d.IndustryTag)
+            .Include(d => d.InterestTags)
+            .FirstOrDefaultAsync(d => d.NewsArticleId == id);
 
- if (draft == null) return BadRequest("No draft to publish.");
+            if (draft == null) return BadRequest("No draft to publish.");
 
- var article = await _db.NewsArticles.FindAsync(id);
- if (article == null) return NotFound();
+            var article = await _db.NewsArticles.FindAsync(id);
+            if (article == null) return NotFound();
 
- if (action.Action == "publish")
- {
- // ensure industry tag exists
- if (draft.IndustryTagId == null) return BadRequest("Industry tag is required.");
- // ensure at least one interest tag
- if (draft.InterestTags == null || !draft.InterestTags.Any()) return BadRequest("At least one interest tag is required.");
+            if (action.Action == "publish")
+            {
+                // ensure industry tag exists
+                if (draft.IndustryTagId == null) return BadRequest("Industry tag is required.");
+                // ensure at least one interest tag
+                if (draft.InterestTags == null || !draft.InterestTags.Any()) return BadRequest("At least one interest tag is required.");
 
- var (ok, err) = await _pubService.PublishDraftAsync(draft, action.ScheduledAt, User?.Identity?.Name ?? "consultant");
- if (!ok) return BadRequest(err);
+                var (ok, err) = await _pubService.PublishDraftAsync(draft, action.ScheduledAt, User?.Identity?.Name ?? "consultant");
+                if (!ok) return BadRequest(err);
 
- return Ok(new { message = "Published." });
- }
- else if (action.Action == "unpublish")
- {
- var (ok, err) = await _pubService.UnpublishDraftAsync(draft, User?.Identity?.Name ?? "consultant");
- if (!ok) return BadRequest(err);
- return Ok(new { message = "Unpublished." });
- }
+                return Ok(new { message = "Published." });
+            }
+            else if (action.Action == "unpublish")
+            {
+                var (ok, err) = await _pubService.UnpublishDraftAsync(draft, User?.Identity?.Name ?? "consultant");
+                if (!ok) return BadRequest(err);
+                return Ok(new { message = "Unpublished." });
+            }
 
- return BadRequest("unknown action");
- }
+            return BadRequest("unknown action");
+        }
         [HttpPost("{id:int}/generate-hero")]
         [Authorize(Roles = "Consultant")]
         public async Task<IActionResult> GenerateHero(int id, [FromBody] GenerateHeroImageDto dto)
@@ -269,255 +277,348 @@ namespace News_Back_end.Controllers
 
         // GET /api/publish/{id}/preview
         [HttpGet("{id:int}/preview")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> Preview(int id, [FromQuery] string? lang = null)
- {
- var article = await _db.NewsArticles.FindAsync(id);
- if (article == null) return NotFound();
-
- var draft = await _db.PublicationDrafts
- .Include(d => d.IndustryTag)
- .Include(d => d.InterestTags)
- .FirstOrDefaultAsync(d => d.NewsArticleId == id);
-
- // assemble preview DTO
- var content = draft?.FullContentEN ?? article.FullContentEN ?? article.OriginalContent;
- if (!string.IsNullOrWhiteSpace(lang) && lang.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
- {
- content = draft?.FullContentZH ?? article.FullContentZH ?? article.OriginalContent;
- }
-
- var preview = new
- {
- TitleZH = article.TitleZH,
- TitleEN = article.TitleEN,
- Content = content,
- HeroImageUrl = draft?.HeroImageUrl,
- IndustryTag = draft?.IndustryTag == null ? null : new { draft.IndustryTag.IndustryTagId, draft.IndustryTag.NameEN, draft.IndustryTag.NameZH },
- InterestTags = draft?.InterestTags.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH })
- };
-
- return Ok(preview);
- }
-
- // POST /api/publish/batch/publish
- [HttpPost("batch/publish")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> BatchPublish([FromBody] BatchPublishDto dto)
- {
- if (dto.ArticleIds == null || dto.ArticleIds.Count ==0) return BadRequest("articleIds required");
-
- var results = new List<object>();
- var drafts = await _db.PublicationDrafts
- .Include(d => d.InterestTags)
- .Where(d => dto.ArticleIds.Contains(d.NewsArticleId))
- .ToListAsync();
-
- foreach (var id in dto.ArticleIds)
- {
- var draft = drafts.FirstOrDefault(d => d.NewsArticleId == id);
- if (draft == null)
- {
- results.Add(new { id, success = false, error = "no draft" });
- continue;
- }
-
- var (ok, err) = await _pubService.PublishDraftAsync(draft, dto.ScheduledAt, User?.Identity?.Name ?? "consultant");
- results.Add(new { id, success = ok, error = err });
- }
-
- await _db.SaveChangesAsync();
- return Ok(results);
- }
-
- // POST /api/publish/batch/unpublish
- [HttpPost("batch/unpublish")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> BatchUnpublish([FromBody] BatchIdsDto dto)
- {
- if (dto.ArticleIds == null || dto.ArticleIds.Count ==0) return BadRequest("articleIds required");
- var drafts = await _db.PublicationDrafts.Where(d => dto.ArticleIds.Contains(d.NewsArticleId)).ToListAsync();
- var results = new List<object>();
- foreach (var id in dto.ArticleIds)
- {
- var draft = drafts.FirstOrDefault(d => d.NewsArticleId == id);
- if (draft == null) { results.Add(new { id, success = false, error = "no draft" }); continue; }
- var (ok, err) = await _pubService.UnpublishDraftAsync(draft, User?.Identity?.Name ?? "consultant");
- results.Add(new { id, success = ok, error = err });
- }
- await _db.SaveChangesAsync();
- return Ok(results);
- }
-
- // POST /api/publish/batch/save
- [HttpPost("batch/save")]
- [Authorize(Roles = "Consultant")]
- public async Task<IActionResult> BatchSave([FromBody] List<PublishArticleDto> dtos)
- {
- if (dtos == null || dtos.Count ==0) return BadRequest("body required");
- var results = new List<object>();
- foreach (var dto in dtos)
- {
- var id = dto.NewsArticleId;
- var article = await _db.NewsArticles.FindAsync(id);
- if (article == null) { results.Add(new { id, success = false, error = "article not found" }); continue; }
- var draft = await _db.PublicationDrafts.Include(d => d.InterestTags).FirstOrDefaultAsync(d => d.NewsArticleId == id);
- if (draft == null)
- {
- draft = new PublicationDraft { NewsArticleId = id, CreatedAt = DateTime.Now, CreatedBy = User?.Identity?.Name ?? "consultant" };
- _db.PublicationDrafts.Add(draft);
- }
- draft.HeroImageUrl = dto.HeroImageUrl;
- draft.HeroImageAlt = dto.HeroImageAlt;
- draft.HeroImageSource = dto.HeroImageSource;
- draft.FullContentEN = dto.FullContentEN;
- draft.FullContentZH = dto.FullContentZH;
- draft.UpdatedAt = DateTime.Now;
- if (dto.IndustryTagId.HasValue)
- {
- var industry = await _db.IndustryTags.FindAsync(dto.IndustryTagId.Value);
- if (industry == null) { results.Add(new { id, success = false, error = "invalid industry" }); continue; }
- draft.IndustryTag = industry;
- draft.IndustryTagId = industry.IndustryTagId;
- }
- draft.InterestTags.Clear();
- if (dto.InterestTagIds != null && dto.InterestTagIds.Count >0)
- {
- var tags = await _db.InterestTags.Where(t => dto.InterestTagIds.Contains(t.InterestTagId)).ToListAsync();
- foreach (var t in tags) draft.InterestTags.Add(t);
- }
- results.Add(new { id, success = true });
- }
- await _db.SaveChangesAsync();
- return Ok(results);
- }
-        // POST /api/publish/suggest
-        // Uses OpenAI to suggest industry and interest tags for a list of articles
-        [HttpPost("suggest")]
         [Authorize(Roles = "Consultant")]
-        public async Task<IActionResult> SuggestPublish([FromBody] SuggestPublishDto dto)
+        public async Task<IActionResult> Preview(int id, [FromQuery] string? lang = null)
         {
-            if (dto == null || dto.ArticleIds == null || dto.ArticleIds.Count == 0)
-                return BadRequest("ArticleIds are required.");
+            var article = await _db.NewsArticles.FindAsync(id);
+            if (article == null) return NotFound();
 
-            // Load articles
-            var articles = await _db.NewsArticles
-                .Where(a => dto.ArticleIds.Contains(a.NewsArticleId))
-                .ToDictionaryAsync(a => a.NewsArticleId);
+            var draft = await _db.PublicationDrafts
+            .Include(d => d.IndustryTag)
+            .Include(d => d.InterestTags)
+            .FirstOrDefaultAsync(d => d.NewsArticleId == id);
 
-            // Load tag metadata
-            var industryTags = await _db.IndustryTags.ToListAsync();
-            var interestTags = await _db.InterestTags.ToListAsync();
+            // assemble preview DTO
+            var content = draft?.FullContentEN ?? article.FullContentEN ?? article.OriginalContent;
+            if (!string.IsNullOrWhiteSpace(lang) && lang.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+            {
+                content = draft?.FullContentZH ?? article.FullContentZH ?? article.OriginalContent;
+            }
 
-            // Prepare choice lists for the prompt
-            var industryNames = industryTags.Select(i => i.NameEN).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToList();
-            var interestNames = interestTags.Select(i => i.NameEN).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToList();
+            var preview = new
+            {
+                TitleZH = article.TitleZH,
+                TitleEN = article.TitleEN,
+                Content = content,
+                HeroImageUrl = draft?.HeroImageUrl,
+                IndustryTag = draft?.IndustryTag == null ? null : new { draft.IndustryTag.IndustryTagId, draft.IndustryTag.NameEN, draft.IndustryTag.NameZH },
+                InterestTags = draft?.InterestTags.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH })
+            };
 
-            // Build a combined prompt feeding the list of choices so AI selects from them
-            var sb = new System.Text.StringBuilder();
-            sb.AppendLine("You are an assistant that maps articles to one industry and up to3 interest topics. Respond with JSON only.");
-            sb.AppendLine("Available industries:");
-            sb.AppendLine(JsonSerializer.Serialize(industryNames));
-            sb.AppendLine("Available interests:");
-            sb.AppendLine(JsonSerializer.Serialize(interestNames));
-            sb.AppendLine();
-            sb.AppendLine("For each article provided, return an object with keys: articleId, industry (choose one exact name from Available industries), interests (array of up to3 exact names from Available interests), rationale (one short sentence). Return a JSON array named suggestions.");
+            return Ok(preview);
+        }
 
-            // Add articles content to user prompt
-            sb.AppendLine();
-            sb.AppendLine("Articles:");
+        // POST /api/publish/batch/publish
+        [HttpPost("batch/publish")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> BatchPublish([FromBody] BatchPublishDto dto)
+        {
+            if (dto.ArticleIds == null || dto.ArticleIds.Count == 0) return BadRequest("articleIds required");
+
+            var results = new List<object>();
+            var drafts = await _db.PublicationDrafts
+            .Include(d => d.InterestTags)
+            .Where(d => dto.ArticleIds.Contains(d.NewsArticleId))
+            .ToListAsync();
+
             foreach (var id in dto.ArticleIds)
             {
-                if (articles.TryGetValue(id, out var a))
+                var draft = drafts.FirstOrDefault(d => d.NewsArticleId == id);
+                if (draft == null)
                 {
-                    var title = a.TitleEN ?? a.TitleZH ?? string.Empty;
-                    var summary = a.SummaryEN ?? a.SummaryZH ?? (a.OriginalContent?.Substring(0, Math.Min(400, (a.OriginalContent ?? string.Empty).Length)) ?? string.Empty);
-                    sb.AppendLine(JsonSerializer.Serialize(new { articleId = id, title, summary }));
-                }
-            }
-
-            var userPrompt = sb.ToString();
-
-            string? aiText;
-            try
-            {
-                aiText = await _chat.CreateChatCompletionAsync("You are a precise classifier. Output JSON only.", userPrompt, maxTokens: 800, temperature: 0.2);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(502, new { error = "OpenAI call failed", detail = ex.Message });
-            }
-
-            if (string.IsNullOrWhiteSpace(aiText)) return StatusCode(502, new { error = "Empty response from OpenAI" });
-
-            var cleaned = aiText.Trim();
-            // try extract JSON from code fences
-            if (cleaned.StartsWith("```"))
-            {
-                var match = Regex.Match(cleaned, "```(?:json)?\\s*\\n?([\\s\\S]*?)\\n?```", RegexOptions.Singleline);
-                if (match.Success && match.Groups.Count > 1) cleaned = match.Groups[1].Value.Trim();
-            }
-
-            // Try parse
-            try
-            {
-                using var doc = JsonDocument.Parse(cleaned);
-                var root = doc.RootElement;
-                // Expecting { "suggestions": [ ... ] } or an array
-                JsonElement suggestionsElem;
-                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("suggestions", out suggestionsElem))
-                {
-                    // ok
-                }
-                else if (root.ValueKind == JsonValueKind.Array)
-                {
-                    // wrap into suggestions
-                    var arr = root;
-                    var result = new List<object>();
-                    foreach (var item in arr.EnumerateArray())
-                    {
-                        result.Add(item);
-                    }
-                    return Ok(new { raw = aiText, suggestions = result });
+                    results.Add(new { id, success = false, error = "no draft" });
+                    continue;
                 }
 
-                // Map suggestion names to tag ids where possible and return
-                var suggestions = new List<object>();
-                var arrElem = root.ValueKind == JsonValueKind.Object ? root.GetProperty("suggestions") : root;
-                foreach (var item in arrElem.EnumerateArray())
-                {
-                    var aid = item.GetProperty("articleId").GetInt32();
-                    var industryName = item.TryGetProperty("industry", out var iname) ? iname.GetString() ?? string.Empty : string.Empty;
-                    var interestsList = new List<string>();
-                    if (item.TryGetProperty("interests", out var iarr) && iarr.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var it in iarr.EnumerateArray()) if (it.ValueKind == JsonValueKind.String) interestsList.Add(it.GetString() ?? string.Empty);
-                    }
-                    var rationale = item.TryGetProperty("rationale", out var r) ? r.GetString() ?? string.Empty : string.Empty;
-
-                    var matchedIndustry = industryTags.FirstOrDefault(t => string.Equals(t.NameEN, industryName, StringComparison.OrdinalIgnoreCase) || string.Equals(t.NameZH, industryName, StringComparison.OrdinalIgnoreCase));
-                    var matchedInterestIds = interestTags.Where(t => interestsList.Any(n => string.Equals(n, t.NameEN, StringComparison.OrdinalIgnoreCase) || string.Equals(n, t.NameZH, StringComparison.OrdinalIgnoreCase))).Select(t => t.InterestTagId).ToList();
-
-                    suggestions.Add(new
-                    {
-                        articleId = aid,
-                        industry = new { name = industryName, industryTagId = matchedIndustry?.IndustryTagId },
-                        interests = interestsList.Select((n, idx) => new { name = n, interestTagId = matchedInterestIds.ElementAtOrDefault(idx) }).ToList(),
-                        rationale
-                    });
-                }
-
-                return Ok(new { raw = aiText, suggestions });
+                var (ok, err) = await _pubService.PublishDraftAsync(draft, dto.ScheduledAt, User?.Identity?.Name ?? "consultant");
+                results.Add(new { id, success = ok, error = err });
             }
-            catch (JsonException)
-            {
-                // parsing failed - return raw
-                return Ok(new { raw = aiText, parsed = (object?)null });
-            }
+
+            await _db.SaveChangesAsync();
+            return Ok(results);
         }
- }
- public class SuggestPublishDto
- {
- public List<int> ArticleIds { get; set; } = new List<int>();
- }
+
+        // POST /api/publish/batch/unpublish
+        [HttpPost("batch/unpublish")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> BatchUnpublish([FromBody] BatchIdsDto dto)
+        {
+            if (dto.ArticleIds == null || dto.ArticleIds.Count == 0) return BadRequest("articleIds required");
+            var drafts = await _db.PublicationDrafts.Where(d => dto.ArticleIds.Contains(d.NewsArticleId)).ToListAsync();
+            var results = new List<object>();
+            foreach (var id in dto.ArticleIds)
+            {
+                var draft = drafts.FirstOrDefault(d => d.NewsArticleId == id);
+                if (draft == null) { results.Add(new { id, success = false, error = "no draft" }); continue; }
+                var (ok, err) = await _pubService.UnpublishDraftAsync(draft, User?.Identity?.Name ?? "consultant");
+                results.Add(new { id, success = ok, error = err });
+            }
+            await _db.SaveChangesAsync();
+            return Ok(results);
+        }
+
+        // POST /api/publish/batch/save
+        [HttpPost("batch/save")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> BatchSave([FromBody] List<PublishArticleDto> dtos)
+        {
+            if (dtos == null || dtos.Count == 0) return BadRequest("body required");
+            var results = new List<object>();
+            foreach (var dto in dtos)
+            {
+                var id = dto.NewsArticleId;
+                var article = await _db.NewsArticles.FindAsync(id);
+                if (article == null) { results.Add(new { id, success = false, error = "article not found" }); continue; }
+                var draft = await _db.PublicationDrafts.Include(d => d.InterestTags).FirstOrDefaultAsync(d => d.NewsArticleId == id);
+                if (draft == null)
+                {
+                    draft = new PublicationDraft { NewsArticleId = id, CreatedAt = DateTime.Now, CreatedBy = User?.Identity?.Name ?? "consultant" };
+                    _db.PublicationDrafts.Add(draft);
+                }
+                draft.HeroImageUrl = dto.HeroImageUrl;
+                draft.HeroImageAlt = dto.HeroImageAlt;
+                draft.HeroImageSource = dto.HeroImageSource;
+                draft.FullContentEN = dto.FullContentEN;
+                draft.FullContentZH = dto.FullContentZH;
+                draft.UpdatedAt = DateTime.Now;
+                if (dto.IndustryTagId.HasValue)
+                {
+                    var industry = await _db.IndustryTags.FindAsync(dto.IndustryTagId.Value);
+                    if (industry == null) { results.Add(new { id, success = false, error = "invalid industry" }); continue; }
+                    draft.IndustryTag = industry;
+                    draft.IndustryTagId = industry.IndustryTagId;
+                }
+                draft.InterestTags.Clear();
+                if (dto.InterestTagIds != null && dto.InterestTagIds.Count > 0)
+                {
+                    var tags = await _db.InterestTags.Where(t => dto.InterestTagIds.Contains(t.InterestTagId)).ToListAsync();
+                    foreach (var t in tags) draft.InterestTags.Add(t);
+                }
+                results.Add(new { id, success = true });
+            }
+            await _db.SaveChangesAsync();
+            return Ok(results);
+        }
+        // New: POST /api/publish/suggest
+        // Body: { "articleIds": [1,2,3] }
+        // Returns per-article suggested IndustryTagId and InterestTagIds (must map to existing tags)
+        [HttpPost("suggest")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> SuggestClassification([FromBody] SuggestRequestDto req)
+        {
+            if (req?.ArticleIds == null || req.ArticleIds.Count == 0) return BadRequest("articleIds required");
+
+            // Load tags list to restrict suggestions
+            var industries = await _db.IndustryTags.AsNoTracking().Select(i => new { i.IndustryTagId, i.NameEN }).ToListAsync();
+            var interests = await _db.InterestTags.AsNoTracking().Select(i => new { i.InterestTagId, i.NameEN }).ToListAsync();
+
+            // OpenAI config
+            var apiKey = _config["OpenAIAISuggestedClassification:ApiKey"];
+            var baseUrl = _config["OpenAIAISuggestedClassification:BaseUrl"] ?? "https://api.openai.com/";
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                // AI not configured, return empty suggestions so frontend can fall back
+                var fallback = new List<SuggestResultDto>();
+                foreach (var id in req.ArticleIds)
+                {
+                    fallback.Add(new SuggestResultDto { NewsArticleId = id, IndustryTagId = null, InterestTagIds = new List<int>(), Error = "AI not configured" });
+                }
+                return Ok(fallback);
+            }
+
+            var results = new List<SuggestResultDto>();
+            var client = _httpFactory.CreateClient();
+            client.BaseAddress = new Uri(baseUrl);
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+            foreach (var aid in req.ArticleIds)
+            {
+                try
+                {
+                    var article = await _db.NewsArticles.AsNoTracking().FirstOrDefaultAsync(a => a.NewsArticleId == aid);
+                    if (article == null)
+                    {
+                        results.Add(new SuggestResultDto { NewsArticleId = aid, Error = "article not found" });
+                        continue;
+                    }
+
+                    var textEN = article.FullContentEN ?? article.OriginalContent ?? string.Empty;
+                    var textZH = article.FullContentZH ?? string.Empty;
+
+                    // Build prompt with available tags and IDs to force model to choose existing tags
+                    var sb = new StringBuilder();
+                    sb.AppendLine("You are an assistant that classifies news articles into one Industry and multiple Interest topics.");
+                    sb.AppendLine("Choose exactly one industry id and1-3 interest ids from the provided lists. Respond with a JSON object with keys: industryId (number or null) and interestIds (array of numbers). Only return valid ids from the lists.");
+                    sb.AppendLine();
+                    sb.AppendLine("Industries:");
+                    foreach (var i in industries) sb.AppendLine($"[{i.IndustryTagId}] {i.NameEN}");
+                    sb.AppendLine();
+                    sb.AppendLine("Interests:");
+                    foreach (var t in interests) sb.AppendLine($"[{t.InterestTagId}] {t.NameEN}");
+                    sb.AppendLine();
+                    sb.AppendLine("Article content (English):");
+                    sb.AppendLine(textEN.Length > 2000 ? textEN.Substring(0, 2000) + "..." : textEN);
+                    if (!string.IsNullOrWhiteSpace(textZH))
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("Article content (Chinese):");
+                        sb.AppendLine(textZH.Length > 2000 ? textZH.Substring(0, 2000) + "..." : textZH);
+                    }
+                    sb.AppendLine();
+                    sb.AppendLine("Return only JSON. Example: {\"industryId\":2, \"interestIds\": [5,7] }");
+
+                    var payload = new
+                    {
+                        model = "gpt-3.5-turbo",
+                        messages = new[] {
+                            new { role = "system", content = "You are a helpful classification assistant."},
+                            new { role = "user", content = sb.ToString() }
+                        },
+                        temperature = 0.0,
+                        max_tokens = 200
+                    };
+
+                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    using var resp = await client.PostAsync("v1/chat/completions", content);
+                    var body = await resp.Content.ReadAsStringAsync();
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning("OpenAI classify failed: {0} {1}", resp.StatusCode, body);
+                        results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"AI error: {resp.StatusCode} {body}" });
+                        continue;
+                    }
+
+                    // parse response and extract content
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(body);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+                        {
+                            var aiChoiceContent = choices[0].GetProperty("message").GetProperty("content").GetString();
+                            var parsed = TryParseJsonLike(aiChoiceContent);
+                            if (parsed != null)
+                            {
+                                var rootEl = parsed.Value;
+                                int? industryId = null;
+                                List<int> interestIds = new List<int>();
+                                if (rootEl.TryGetProperty("industryId", out var indEl) && indEl.ValueKind == JsonValueKind.Number)
+                                {
+                                    if (indEl.TryGetInt32(out var indVal))
+                                    {
+                                        industryId = indVal;
+                                        // validate exists
+                                        if (!industries.Any(x => x.IndustryTagId == industryId.Value)) industryId = null;
+                                    }
+                                }
+                                if (rootEl.TryGetProperty("interestIds", out var ints) && ints.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var el in ints.EnumerateArray())
+                                    {
+                                        if (el.ValueKind == JsonValueKind.Number)
+                                        {
+                                            if (el.TryGetInt32(out var iid))
+                                            {
+                                                if (interests.Any(x => x.InterestTagId == iid)) interestIds.Add(iid);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                results.Add(new SuggestResultDto { NewsArticleId = aid, IndustryTagId = industryId, InterestTagIds = interestIds, RawSuggestion = aiChoiceContent });
+                            }
+                            else
+                            {
+                                // Fallback: try extract numbers from free-text reply (e.g., "industry3, interests5,7")
+                                var aiChoiceText = choices[0].GetProperty("message").GetProperty("content").GetString();
+                                var numbers = System.Text.RegularExpressions.Regex.Matches(aiChoiceText ?? string.Empty, @"\d+")
+                                    .Select(m => int.Parse(m.Value))
+                                    .Distinct()
+                                    .ToList();
+                                if (numbers.Count > 0)
+                                {
+                                    int? industryId = null;
+                                    var interestIds = new List<int>();
+                                    // first number possibly industry
+                                    if (numbers.Count >= 1 && industries.Any(x => x.IndustryTagId == numbers[0])) industryId = numbers[0];
+                                    // next numbers as interests
+                                    foreach (var n in numbers.Skip(1))
+                                    {
+                                        if (interests.Any(x => x.InterestTagId == n)) interestIds.Add(n);
+                                        if (interestIds.Count >= 3) break;
+                                    }
+
+                                    if (industryId != null || interestIds.Count > 0)
+                                    {
+                                        results.Add(new SuggestResultDto { NewsArticleId = aid, IndustryTagId = industryId, InterestTagIds = interestIds, RawSuggestion = aiChoiceText });
+                                    }
+                                    else
+                                    {
+                                        var snippet = aiChoiceText?.Length > 300 ? aiChoiceText.Substring(0, 300) + "..." : aiChoiceText;
+                                        results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"failed to parse AI response: {snippet}", RawSuggestion = aiChoiceText });
+                                    }
+                                }
+                                else
+                                {
+                                    var snippet = aiChoiceText?.Length > 300 ? aiChoiceText.Substring(0, 300) + "..." : aiChoiceText;
+                                    results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"failed to parse AI response: {snippet}", RawSuggestion = aiChoiceText });
+                                }
+                            }
+                        }
+                        else
+                        {
+                            results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"no choices: {body}" });
+                        }
+                    }
+                    catch (JsonException jex)
+                    {
+                        _logger.LogWarning(jex, "Failed to parse OpenAI response: {0}", body);
+                        var snippet = body?.Length > 500 ? body.Substring(0, 500) + "..." : body;
+                        results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"parse error: {jex.Message} {snippet}" });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "SuggestClassification error for article {id}", aid);
+                    results.Add(new SuggestResultDto { NewsArticleId = aid, Error = ex.Message });
+                }
+            }
+
+            return Ok(results);
+        }
+
+        // Helper: try parse string content as JSON object; trims code fences and tries to find first JSON object in text
+        private static JsonElement? TryParseJsonLike(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            // remove markdown fences
+            text = text.Trim();
+            if (text.StartsWith("```"))
+            {
+                var idx = text.IndexOf("\n");
+                if (idx >= 0) text = text.Substring(idx + 1).Trim();
+                if (text.EndsWith("```")) text = text.Substring(0, text.Length - 3).Trim();
+            }
+
+            // find first { and last }
+            var first = text.IndexOf('{');
+            var last = text.LastIndexOf('}');
+            if (first >= 0 && last > first)
+            {
+                var json = text.Substring(first, last - first + 1);
+                try
+                {
+                    var doc = JsonDocument.Parse(json);
+                    return doc.RootElement;
+                }
+                catch { return null; }
+            }
+
+            return null;
+        }
+
+        // DTOs used by the new endpoint
+        public class SuggestRequestDto { public List<int>? ArticleIds { get; set; } }
+        public class SuggestResultDto { public int NewsArticleId { get; set; } public int? IndustryTagId { get; set; } public List<int> InterestTagIds { get; set; } = new(); public string? RawSuggestion { get; set; } public string? Error { get; set; } }
+    }
 }
