@@ -1,17 +1,11 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using News_Back_end.DTOs;
 using News_Back_end.Models.SQLServer;
 using News_Back_end.Services;
 using System;
 using System.Linq;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.IO;
@@ -26,23 +20,18 @@ namespace News_Back_end.Controllers
  private readonly MyDBContext _db;
  private readonly IImageGenerationService? _imageService;
  private readonly IPublicationService _pubService;
- private readonly IConfiguration _config;
- private readonly IHttpClientFactory _httpFactory;
- private readonly ILogger<PublishController> _logger;
- private readonly IWebHostEnvironment _env;
+        private readonly IWebHostEnvironment _env;
 
- public PublishController(MyDBContext db, IPublicationService pubService, IConfiguration config, IHttpClientFactory httpFactory, ILogger<PublishController> logger, IImageGenerationService? imageService = null)
- {
- _db = db;
- _imageService = imageService;
- _pubService = pubService;
- _config = config;
- _httpFactory = httpFactory;
- _logger = logger;
- }
+        public PublishController(MyDBContext db, IPublicationService pubService, IWebHostEnvironment env, IImageGenerationService? imageService = null)
+        {
+            _db = db;
+            _imageService = imageService;
+            _pubService = pubService;
+            _env = env;
+        }
 
- // GET /api/publish/{id}
- [HttpGet("{id:int}")]
+        // GET /api/publish/{id}
+        [HttpGet("{id:int}")]
  [Authorize(Roles = "Consultant")]
  public async Task<IActionResult> GetDraft(int id)
  {
@@ -398,194 +387,5 @@ namespace News_Back_end.Controllers
  await _db.SaveChangesAsync();
  return Ok(results);
  }
-        // New: POST /api/publish/suggest
-        // Body: { "articleIds": [1,2,3] }
-        // Returns per-article suggested IndustryTagId and InterestTagIds (must map to existing tags)
-        [HttpPost("suggest")]
-        [Authorize(Roles = "Consultant")]
-        public async Task<IActionResult> SuggestClassification([FromBody] SuggestRequestDto req)
-        {
-            if (req?.ArticleIds == null || req.ArticleIds.Count ==0) return BadRequest("articleIds required");
-
-            // Load tags list to restrict suggestions
-            var industries = await _db.IndustryTags.AsNoTracking().Select(i => new { i.IndustryTagId, i.NameEN }).ToListAsync();
-            var interests = await _db.InterestTags.AsNoTracking().Select(i => new { i.InterestTagId, i.NameEN }).ToListAsync();
-
-            // OpenAI config
-            var apiKey = _config["OpenAIAISuggestedClassification:ApiKey"];
-            var baseUrl = _config["OpenAIAISuggestedClassification:BaseUrl"] ?? "https://api.openai.com/";
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                // AI not configured, return empty suggestions so frontend can fall back
-                var fallback = new List<SuggestResultDto>();
-                foreach (var id in req.ArticleIds)
-                {
-                    fallback.Add(new SuggestResultDto { NewsArticleId = id, IndustryTagId = null, InterestTagIds = new List<int>(), Error = "AI not configured" });
-                }
-                return Ok(fallback);
-            }
-
-            var results = new List<SuggestResultDto>();
-            var client = _httpFactory.CreateClient();
-            client.BaseAddress = new Uri(baseUrl);
-            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-
-            foreach (var aid in req.ArticleIds)
-            {
-                try
-                {
-                    var article = await _db.NewsArticles.AsNoTracking().FirstOrDefaultAsync(a => a.NewsArticleId == aid);
-                    if (article == null)
-                    {
-                        results.Add(new SuggestResultDto { NewsArticleId = aid, Error = "article not found" });
-                        continue;
-                    }
-
-                    var textEN = article.FullContentEN ?? article.OriginalContent ?? string.Empty;
-                    var textZH = article.FullContentZH ?? string.Empty;
-
-                    // Build prompt with available tags and IDs to force model to choose existing tags
-                    var sb = new StringBuilder();
-                    sb.AppendLine("You are an assistant that classifies news articles into one Industry and multiple Interest topics.");
-                    sb.AppendLine("Choose exactly one industry id and1-3 interest ids from the provided lists. Respond with a JSON object with keys: industryId (number or null) and interestIds (array of numbers). Only return valid ids from the lists.");
-                    sb.AppendLine();
-                    sb.AppendLine("Industries:");
-                    foreach (var i in industries) sb.AppendLine($"[{i.IndustryTagId}] {i.NameEN}");
-                    sb.AppendLine();
-                    sb.AppendLine("Interests:");
-                    foreach (var t in interests) sb.AppendLine($"[{t.InterestTagId}] {t.NameEN}");
-                    sb.AppendLine();
-                    sb.AppendLine("Article content (English):");
-                    sb.AppendLine(textEN.Length >2000 ? textEN.Substring(0,2000) + "..." : textEN);
-                    if (!string.IsNullOrWhiteSpace(textZH))
-                    {
-                        sb.AppendLine();
-                        sb.AppendLine("Article content (Chinese):");
-                        sb.AppendLine(textZH.Length >2000 ? textZH.Substring(0,2000) + "..." : textZH);
-                    }
-                    sb.AppendLine();
-                    sb.AppendLine("Return only JSON. Example: {\"industryId\":2, \"interestIds\": [5,7] }");
-
-                    var payload = new
-                    {
-                        model = "gpt-3.5-turbo",
-                        messages = new[] {
-                            new { role = "system", content = "You are a helpful classification assistant."},
-                            new { role = "user", content = sb.ToString() }
-                        },
-                        temperature =0.0,
-                        max_tokens =200
-                    };
-
-                    var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-                    using var resp = await client.PostAsync("v1/chat/completions", content);
-                    var body = await resp.Content.ReadAsStringAsync();
-                    if (!resp.IsSuccessStatusCode)
-                    {
-                        _logger.LogWarning("OpenAI classify failed: {0} {1}", resp.StatusCode, body);
-                        results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"AI error: {resp.StatusCode} {body}" });
-                        continue;
-                    }
-
-                    // parse response and extract content
-                    try
-                    {
-                        using var doc = JsonDocument.Parse(body);
-                        var root = doc.RootElement;
-                        if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() >0)
-                        {
-                            var message = choices[0].GetProperty("message").GetProperty("content").GetString();
-                            var parsed = TryParseJsonLike(message);
-                            if (parsed != null)
-                            {
-                                var rootEl = parsed.Value;
-                                int? industryId = null;
-                                List<int> interestIds = new List<int>();
-                                if (rootEl.TryGetProperty("industryId", out var indEl) && indEl.ValueKind == JsonValueKind.Number)
-                                {
-                                    if (indEl.TryGetInt32(out var indVal))
-                                    {
-                                        industryId = indVal;
-                                        // validate exists
-                                        if (!industries.Any(x => x.IndustryTagId == industryId.Value)) industryId = null;
-                                    }
-                                }
-                                if (rootEl.TryGetProperty("interestIds", out var ints) && ints.ValueKind == JsonValueKind.Array)
-                                {
-                                    foreach (var el in ints.EnumerateArray())
-                                    {
-                                        if (el.ValueKind == JsonValueKind.Number)
-                                        {
-                                            if (el.TryGetInt32(out var iid))
-                                            {
-                                                if (interests.Any(x => x.InterestTagId == iid)) interestIds.Add(iid);
-                                            }
-                                        }
-                                    }
-                                }
-
-                                results.Add(new SuggestResultDto { NewsArticleId = aid, IndustryTagId = industryId, InterestTagIds = interestIds, RawSuggestion = message });
-                            }
-                            else
-                            {
-                                var snippet = message?.Length >300 ? message.Substring(0,300) + "..." : message;
-                                results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"failed to parse AI response: {snippet}", RawSuggestion = message });
-                            }
-                        }
-                        else
-                        {
-                            results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"no choices: {body}" });
-                        }
-                    }
-                    catch (JsonException jex)
-                    {
-                        _logger.LogWarning(jex, "Failed to parse OpenAI response: {0}", body);
-                        var snippet = body?.Length >500 ? body.Substring(0,500) + "..." : body;
-                        results.Add(new SuggestResultDto { NewsArticleId = aid, Error = $"parse error: {jex.Message} {snippet}" });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "SuggestClassification error for article {id}", aid);
-                    results.Add(new SuggestResultDto { NewsArticleId = aid, Error = ex.Message });
-                }
-            }
-
-            return Ok(results);
-        }
-
-        // Helper: try parse string content as JSON object; trims code fences and tries to find first JSON object in text
-        private static JsonElement? TryParseJsonLike(string? text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            // remove markdown fences
-            text = text.Trim();
-            if (text.StartsWith("```"))
-            {
-                var idx = text.IndexOf("\n");
-                if (idx >=0) text = text.Substring(idx +1).Trim();
-                if (text.EndsWith("```")) text = text.Substring(0, text.Length -3).Trim();
-            }
-
-            // find first { and last }
-            var first = text.IndexOf('{');
-            var last = text.LastIndexOf('}');
-            if (first >=0 && last > first)
-            {
-                var json = text.Substring(first, last - first +1);
-                try
-                {
-                    var doc = JsonDocument.Parse(json);
-                    return doc.RootElement;
-                }
-                catch { return null; }
-            }
-
-            return null;
-        }
-
-        // DTOs used by the new endpoint
-        public class SuggestRequestDto { public List<int>? ArticleIds { get; set; } }
-        public class SuggestResultDto { public int NewsArticleId { get; set; } public int? IndustryTagId { get; set; } public List<int> InterestTagIds { get; set; } = new(); public string? RawSuggestion { get; set; } public string? Error { get; set; } }
-    }
+ }
 }
