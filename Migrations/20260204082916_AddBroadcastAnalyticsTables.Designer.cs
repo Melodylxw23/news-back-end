@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260204082916_AddBroadcastAnalyticsTables")]
+    partial class AddBroadcastAnalyticsTables
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -574,91 +577,6 @@ namespace News_Back_end.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("BroadcastMessages");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsSendLog", b =>
-                {
-                    b.Property<int>("ConsultantInsightsSendLogId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ConsultantInsightsSendLogId"));
-
-                    b.Property<string>("ConsultantUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("Error")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<string>("Period")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime>("PeriodDateUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTimeOffset>("SentAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<bool>("Success")
-                        .HasColumnType("bit");
-
-                    b.HasKey("ConsultantInsightsSendLogId");
-
-                    b.HasIndex("ConsultantUserId", "Period", "PeriodDateUtc")
-                        .IsUnique();
-
-                    b.ToTable("ConsultantInsightsSendLogs");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantPreference", b =>
-                {
-                    b.Property<int>("ConsultantPreferenceId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ConsultantPreferenceId"));
-
-                    b.Property<string>("ConsultantUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
-
-                    b.Property<string>("Frequency")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("IndustriesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("PreferredTimeMinutesUtc")
-                        .HasColumnType("int");
-
-                    b.Property<string>("TerritoriesJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.HasKey("ConsultantPreferenceId");
-
-                    b.HasIndex("ConsultantUserId")
-                        .IsUnique();
-
-                    b.ToTable("ConsultantPreferences");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.DailyBroadcastMetric", b =>
@@ -1462,28 +1380,6 @@ namespace News_Back_end.Migrations
                     b.Navigation("BroadcastDelivery");
 
                     b.Navigation("PublicationDraft");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsSendLog", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ConsultantUser")
-                        .WithMany()
-                        .HasForeignKey("ConsultantUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ConsultantUser");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantPreference", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ConsultantUser")
-                        .WithMany()
-                        .HasForeignKey("ConsultantUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ConsultantUser");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>
