@@ -234,14 +234,27 @@ if (!string.IsNullOrWhiteSpace(openAIHeroKey))
 var openAIBroadcastKey = builder.Configuration["OpenAIBroadcast:ApiKey"];
 if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
 {
-    var openAIBroadcastBase = builder.Configuration["OpenAIBroadcast:BaseUrl"] ?? "https://api.openai.com/";
-    builder.Services.AddHttpClient<IAiBroadcastService, OpenAIBroadcastService>(c =>
-    {
-        c.BaseAddress = new Uri(openAIBroadcastBase);
-        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIBroadcastKey}");
-        c.Timeout = TimeSpan.FromSeconds(30);
-    });
+ var openAIBroadcastBase = builder.Configuration["OpenAIBroadcast:BaseUrl"] ?? "https://api.openai.com/";
+ builder.Services.AddHttpClient<IAiBroadcastService, OpenAIBroadcastService>(c =>
+ {
+ c.BaseAddress = new Uri(openAIBroadcastBase);
+ c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIBroadcastKey}");
+ c.Timeout = TimeSpan.FromSeconds(30);
+ });
 }
+
+// Register OpenAIChatClient so controllers can inject it
+var openAIChatKey = builder.Configuration["OpenAI:ApiKey"] ?? builder.Configuration["OpenAIRecommendation:ApiKey"];
+var openAIChatBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
+builder.Services.AddHttpClient<OpenAIChatClient>(c =>
+{
+ c.BaseAddress = new Uri(openAIChatBase);
+ c.Timeout = TimeSpan.FromSeconds(120);
+ if (!string.IsNullOrWhiteSpace(openAIChatKey))
+ {
+ c.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", openAIChatKey);
+ }
+});
 
 // Register PublicationService and ScheduledPublishHostedService
 builder.Services.AddScoped<IPublicationService, PublicationService>();

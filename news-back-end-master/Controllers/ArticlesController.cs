@@ -146,10 +146,10 @@ namespace News_Back_end.Controllers
 
         // GET: api/articles/search?q=bitcoin&page=1&pageSize=20
         [HttpGet("search")]
-        public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int page =1, [FromQuery] int pageSize =20)
         {
-            if (page <= 0) page = 1;
-            if (pageSize <= 0 || pageSize > 200) pageSize = 20;
+            if (page <=0) page =1;
+            if (pageSize <=0 || pageSize >200) pageSize =20;
             if (string.IsNullOrWhiteSpace(q)) return BadRequest("query required");
 
             var normalized = q.Trim();
@@ -168,7 +168,7 @@ namespace News_Back_end.Controllers
 
             var total = await baseQ.LongCountAsync();
             var items = await baseQ.OrderByDescending(a => a.PublishedAt ?? a.CreatedAt)
-                .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+                .Skip((page -1) * pageSize).Take(pageSize).ToListAsync();
 
             var dtos = items.Select(a => new ArticleDto(
                 a.NewsArticleId,
@@ -176,6 +176,46 @@ namespace News_Back_end.Controllers
                 a.TitleEN,
                 a.OriginalContent,
                 a.OriginalLanguage,
+                a.TranslationLanguage,
+                a.TranslationStatus,
+                a.SourceURL,
+                a.PublishedAt,
+                a.CrawledAt,
+                a.SourceId,
+                a.TranslationSavedBy,
+                a.TranslationSavedAt,
+                a.FullContentEN,
+                a.FullContentZH,
+                a.SummaryEN,
+                a.SummaryZH)).ToList();
+
+            return Ok(new PagedResult<ArticleDto> { Page = page, PageSize = pageSize, Total = total, Items = dtos });
+        }
+
+        // GET: /api/articles/published?page=1&pageSize=1000
+        [HttpGet("published")]
+        public async Task<IActionResult> Published([FromQuery] int page =1, [FromQuery] int pageSize =1000)
+        {
+            if (page <=0) page =1;
+            // allow large pageSize for "load all" but clamp it to a safe max
+            const int MaxPageSize =10000;
+            if (pageSize <=0 || pageSize > MaxPageSize) pageSize = Math.Min(pageSize <=0 ?1000 : pageSize, MaxPageSize);
+
+            // only articles with a PublishedAt and already published (<= now)
+            var q = _db.NewsArticles
+                .AsNoTracking()
+                .Where(a => a.PublishedAt != null && a.PublishedAt <= DateTime.UtcNow)
+                .OrderByDescending(a => a.PublishedAt ?? a.CreatedAt);
+
+            var total = await q.LongCountAsync();
+            var items = await q.Skip((page -1) * pageSize).Take(pageSize).ToListAsync();
+
+            var dtos = items.Select(a => new ArticleDto(
+                a.NewsArticleId,
+                a.TitleZH,
+                a.TitleEN,
+                a.OriginalContent ?? string.Empty,
+                a.OriginalLanguage ?? string.Empty,
                 a.TranslationLanguage,
                 a.TranslationStatus,
                 a.SourceURL,

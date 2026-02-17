@@ -93,25 +93,25 @@ namespace News_Back_end.Controllers
 
         // GET: api/UserControllers/members
         [HttpGet("members")]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> GetAllMembers()
-        {
-            var members = await _context.Members
-                .Include(m => m.IndustryTags)
-                .Include(m => m.Interests)
-                .Select(m => new
-                {
-                    m.MemberId,
-                    Name = m.ContactPerson,
-                    m.Email,
-                    m.CompanyName,
-                    IndustryTags = m.IndustryTags.Select(t => new { t.IndustryTagId, t.NameEN, t.NameZH }).ToList(),
+        [Authorize(Roles = "Admin,Consultant")]
+    public async Task<IActionResult> GetAllMembers()
+  {
+          var members = await _context.Members
+    .Include(m => m.IndustryTags)
+  .Include(m => m.Interests)
+     .Select(m => new
+  {
+     m.MemberId,
+       Name = m.ContactPerson,
+       m.Email,
+           m.CompanyName,
+         IndustryTags = m.IndustryTags.Select(t => new { t.IndustryTagId, t.NameEN, t.NameZH }).ToList(),
                     InterestTags = m.Interests.Select(t => new { t.InterestTagId, t.NameEN, t.NameZH }).ToList(),
-                    IsActive = _context.Users.Where(u => u.Id == m.ApplicationUserId).Select(u => u.IsActive).FirstOrDefault()
-                })
-                .ToListAsync();
+  IsActive = _context.Users.Where(u => u.Id == m.ApplicationUserId).Select(u => u.IsActive).FirstOrDefault()
+    })
+          .ToListAsync();
 
-            return Ok(new { message = "Members retrieved successfully.", data = members });
+          return Ok(new { message = "Members retrieved successfully.", data = members });
         }
 
         // GET: api/UserControllers/consultants
@@ -459,24 +459,51 @@ namespace News_Back_end.Controllers
         public async Task<IActionResult> ResetPassword(ResetPasswordDTO dto)
         {
             if (!ModelState.IsValid)
-                return BadRequest(ModelState);
+ return BadRequest(ModelState);
 
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null)
-                return NotFound("User not found.");
+         var user = await _userManager.FindByEmailAsync(dto.Email);
+        if (user == null)
+     return NotFound("User not found.");
 
-            if (dto.NewPassword != dto.ConfirmPassword)
-                return BadRequest("New password and confirmation do not match.");
+   if (dto.NewPassword != dto.ConfirmPassword)
+   return BadRequest("New password and confirmation do not match.");
 
-            var decodedToken = WebUtility.UrlDecode(dto.Token);
-            var resetResult = await _userManager.ResetPasswordAsync(user, decodedToken, dto.NewPassword);
-            if (!resetResult.Succeeded)
+     // Do NOT URL decode - the token comes already URL-encoded from the frontend
+            // and ASP.NET Identity expects the raw token
+var resetResult = await _userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
+     if (!resetResult.Succeeded)
                 return BadRequest(resetResult.Errors);
 
-            user.Lastlogin = DateTime.Now;
-            await _userManager.UpdateAsync(user);
+  user.Lastlogin = DateTime.Now;
+await _userManager.UpdateAsync(user);
 
-            return Ok("Password has been reset.");
+ return Ok("Password has been reset.");
+        }
+
+     // --------------------- RESET MEMBER PASSWORD (Alias for reset-password) ------------------------------
+  [HttpPost("reset-member-password")]
+      public async Task<IActionResult> ResetMemberPassword(ResetPasswordDTO dto)
+        {
+   if (!ModelState.IsValid)
+     return BadRequest(ModelState);
+
+    var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null)
+          return NotFound(new { message = "User not found." });
+
+       if (dto.NewPassword != dto.ConfirmPassword)
+   return BadRequest(new { message = "New password and confirmation do not match." });
+
+     // Do NOT URL decode - the token comes already URL-encoded from the frontend
+       // and we need to pass it as-is to ResetPasswordAsync
+  var resetResult = await _userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
+       if (!resetResult.Succeeded)
+         return BadRequest(new { message = "Failed to reset password.", errors = resetResult.Errors });
+
+    user.Lastlogin = DateTime.Now;
+     await _userManager.UpdateAsync(user);
+
+     return Ok(new { message = "Password has been reset successfully. You can now login with your new password." });
         }
 
         // --------------------- ACTIVATE / DEACTIVATE USER ------------------------------
@@ -507,210 +534,303 @@ namespace News_Back_end.Controllers
 
         // Identity handles password hashing and verification
 
-        // --------------------- REGISTER MEMBER (creates Identity user + Member profile) ------------------------------
+        // --------------------- REGISTER MEMBER (Consultant only) ------------------------------
         [HttpPost("register-member")]
-        public async Task<IActionResult> RegisterMember(MemberDTOs dto)
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> RegisterMember(RegisterMemberByConsultantDTO dto)
         {
-            if (dto.Password != dto.ConfirmPassword)
-                return BadRequest("Password and Confirm Password do not match.");
+            if (!ModelState.IsValid)
+  return BadRequest(ModelState);
 
             if (await _userManager.FindByEmailAsync(dto.Email) != null)
-                return BadRequest("Email is already registered.");
+     return BadRequest("Email is already registered.");
 
-            var appUser = new ApplicationUser
-            {
-                UserName = dto.Email,
-                Email = dto.Email,
-                Name = dto.ContactPerson,
-                WeChatWorkId = dto.WeChatWorkId,
-                IsActive = true,
-                Lastlogin = DateTime.Now
-            };
+            // Generate temporary password for the member
+    var tempPassword = GenerateTemporaryPassword();
 
-            var res = await _userManager.CreateAsync(appUser, dto.Password);
-            if (!res.Succeeded)
-                return BadRequest(res.Errors);
+  var appUser = new ApplicationUser
+  {
+     UserName = dto.Email,
+          Email = dto.Email,
+         Name = dto.ContactPerson,
+    WeChatWorkId = dto.WeChatWorkId,
+  IsActive = true,
+        Lastlogin = DateTime.Now,
+    MustChangePassword = true
+    };
 
-            // assign Member role
+  var res = await _userManager.CreateAsync(appUser, tempPassword);
+ if (!res.Succeeded)
+  return BadRequest(res.Errors);
+
+            // Assign Member role
             if (!await _roleManager.RoleExistsAsync("Member"))
-                await _roleManager.CreateAsync(new IdentityRole("Member"));
+     await _roleManager.CreateAsync(new IdentityRole("Member"));
 
-            await _userManager.AddToRoleAsync(appUser, "Member");
+          await _userManager.AddToRoleAsync(appUser, "Member");
 
-            // create member profile
+            // Create member profile
             var member = new Member
-            {
-                CompanyName = dto.CompanyName,
+      {
+        CompanyName = dto.CompanyName,
                 ContactPerson = dto.ContactPerson,
-                Email = dto.Email,
-                WeChatWorkId = dto.WeChatWorkId,
-                Country = dto.Country,
-                PreferredLanguage = dto.PreferredLanguage,
-                PreferredChannel = dto.PreferredChannel,
-                MembershipType = dto.MembershipType,
-                ApplicationUserId = appUser.Id,
-                CreatedAt = DateTime.Now
+   Email = dto.Email,
+ WeChatWorkId = dto.WeChatWorkId,
+         Country = dto.Country,
+    PreferredLanguage = dto.PreferredLanguage,
+           PreferredChannel = dto.PreferredChannel,
+        MembershipType = dto.MembershipType,
+    ApplicationUserId = appUser.Id,
+      CreatedAt = DateTime.Now
             };
 
-            _context.Members.Add(member);
-            await _context.SaveChangesAsync(); // Save first to get member ID
+    _context.Members.Add(member);
+    await _context.SaveChangesAsync();
 
-            // Add industry tag relationship
-            if (dto.IndustryTagId > 0)
-            {
-                var industryTag = await _context.IndustryTags.FindAsync(dto.IndustryTagId);
+          // Add industry tag relationship
+  if (dto.IndustryTagId > 0)
+          {
+      var industryTag = await _context.IndustryTags.FindAsync(dto.IndustryTagId);
                 if (industryTag != null)
-                {
+    {
                     member.IndustryTags.Add(industryTag);
-                    await _context.SaveChangesAsync();
-                }
-            }
-
-            return Ok("Member registered successfully.");
+     await _context.SaveChangesAsync();
         }
+   }
+
+         // Send email with temporary password
+      await SendMemberRegistrationEmail(appUser.Email, tempPassword);
+
+  return Ok(new
+         {
+      message = "Member registered successfully. Invitation email has been sent to the member.",
+     memberId = member.MemberId,
+              userId = appUser.Id
+            });
+}
+
+        // Helper method to generate temporary password
+        private string GenerateTemporaryPassword()
+        {
+    const string validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+            var random = new Random();
+            var password = new StringBuilder();
+
+     // Ensure at least one uppercase, one lowercase, one digit, one special char
+  password.Append(validChars[random.Next(26, 52)]);  // Uppercase
+      password.Append(validChars[random.Next(0, 26)]);   // Lowercase
+            password.Append(validChars[random.Next(52, 62)]);  // Digit
+            password.Append(validChars[random.Next(62, validChars.Length)]);  // Special
+
+            // Add random characters to reach 12 characters minimum
+   for (int i = 0; i < 8; i++)
+    {
+     password.Append(validChars[random.Next(validChars.Length)]);
+       }
+
+  return password.ToString();
+    }
+
+      // Helper method to send member registration email
+    private async Task SendMemberRegistrationEmail(string email, string tempPassword)
+  {
+            var subject = "Your Account Has Been Created";
+ 
+ // Generate password reset token for the email link
+            var user = await _userManager.FindByEmailAsync(email);
+ var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+   var encodedToken = WebUtility.UrlEncode(token);
+      
+            var resetLink = $"{_config["Frontend:ResetPasswordUrl"]}?email={WebUtility.UrlEncode(email)}&token={encodedToken}";
+
+            var html = $@"
+<p>Hello,</p>
+<p>Your account has been created by your Consultant. Please use the following information to access your account:</p>
+<p><strong>Email:</strong> {email}</p>
+<p><strong>Temporary Password:</strong> {tempPassword}</p>
+<p>For security reasons, you must change your password on your first login.</p>
+<p><a href='{resetLink}'>Click here to set your new password</a></p>
+<p>Best regards,<br/>The News Team</p>";
+
+     await _emailService.SendEmailAsync(email, subject, html);
+   }
 
         // --------------------- LINK EXISTING MEMBER TO APPLICATIONUSER ------------------------------
-        [HttpPost("link-member")]
+      [HttpPost("link-member")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> LinkMemberToUser([FromBody] LinkMemberDTO dto)
         {
-            var member = await _context.Members.FirstOrDefaultAsync(m => m.MemberId == dto.MemberId);
-            if (member == null)
-                return NotFound("Member not found.");
+   var member = await _context.Members.FirstOrDefaultAsync(m => m.MemberId == dto.MemberId);
+  if (member == null)
+  return NotFound("Member not found.");
 
-            var user = await _userManager.FindByEmailAsync(dto.Email);
-            if (user == null)
-                return NotFound("User not found.");
+         var user = await _userManager.FindByEmailAsync(dto.Email);
+  if (user == null)
+return NotFound("User not found.");
 
-            member.ApplicationUserId = user.Id;
-            await _context.SaveChangesAsync();
+    member.ApplicationUserId = user.Id;
+    await _context.SaveChangesAsync();
 
-            // ensure Member role
-            if (!await _roleManager.RoleExistsAsync("Member"))
-                await _roleManager.CreateAsync(new IdentityRole("Member"));
+          // ensure Member role
+  if (!await _roleManager.RoleExistsAsync("Member"))
+           await _roleManager.CreateAsync(new IdentityRole("Member"));
             await _userManager.AddToRoleAsync(user, "Member");
 
-            return Ok("Linked member to user.");
+       return Ok("Linked member to user.");
         }
 
-        // --------------------- UPDATE NOTIFICATION PREFERENCES ------------------------------
-        [HttpPost("update-notification-preferences")]
+   // --------------------- UPDATE NOTIFICATION PREFERENCES ------------------------------
+    [HttpPost("update-notification-preferences")]
         [Authorize]
         public async Task<IActionResult> UpdateNotificationPreferences([FromBody] UpdateNotificationPreferencesDTO dto)
-        {
-            try
-            {
-                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+{
+ try
+       {
+         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-                // Get the member profile
-                var member = await _context.Members
-                    .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+        // Get the member profile
+  var member = await _context.Members
+        .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
 
-                if (member == null)
-                    return NotFound(new { message = "Member profile not found" });
+         if (member == null)
+           return NotFound(new { message = "Member profile not found" });
 
                 // Update notification channels
-                member.NotificationChannels = dto.NotificationChannels;
+    member.NotificationChannels = dto.NotificationChannels;
 
-                await _context.SaveChangesAsync();
+  await _context.SaveChangesAsync();
 
-                return Ok(new { message = "Notification preferences updated successfully!" });
-            }
+     return Ok(new { message = "Notification preferences updated successfully!" });
+     }
             catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error updating preferences: " + ex.Message });
+       {
+         return StatusCode(500, new { message = "Error updating preferences: " + ex.Message });
             }
         }
 
-        // --------------------- UPDATE NOTIFICATION FREQUENCY ------------------------------
+    // --------------------- UPDATE NOTIFICATION FREQUENCY ------------------------------
         [HttpPost("update-notification-frequency")]
         [Authorize]
         public async Task<IActionResult> UpdateNotificationFrequency([FromBody] UpdateNotificationFrequencyDTO dto)
-        {
+    {
             try
-            {
-                var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+   {
+       var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-                // Get the member profile
+     // Get the member profile
                 var member = await _context.Members
-                    .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+         .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
 
-                if (member == null)
-                    return NotFound(new { message = "Member profile not found" });
+     if (member == null)
+       return NotFound(new { message = "Member profile not found" });
 
-                // Update notification frequency settings
-                member.NotificationFrequency = dto.NotificationFrequency;
-                member.NotificationLanguage = dto.NotificationLanguage;
-                member.ApplyToAllTopics = dto.ApplyToAllTopics;
+   // Update notification frequency settings
+       member.NotificationFrequency = dto.NotificationFrequency;
+      member.NotificationLanguage = dto.NotificationLanguage;
+   member.ApplyToAllTopics = dto.ApplyToAllTopics;
 
                 await _context.SaveChangesAsync();
 
-                return Ok(new { message = "Notification frequency updated successfully!" });
-            }
-            catch (Exception ex)
+         return Ok(new { message = "Notification frequency updated successfully!" });
+          }
+     catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error updating frequency: " + ex.Message });
-            }
+       return StatusCode(500, new { message = "Error updating frequency: " + ex.Message });
+          }
         }
 
         // --------------------- GET CURRENT USER PROFILE & ROLES (for testing) ------------------------------
-        [HttpGet("me")]
+   [HttpGet("me")]
         [Authorize]
-        public async Task<IActionResult> GetCurrentUserProfile()
-        {
+    public async Task<IActionResult> GetCurrentUserProfile()
+   {
             var email = User?.Identity?.Name;
-            if (string.IsNullOrEmpty(email))
-                return Unauthorized();
+  if (string.IsNullOrEmpty(email))
+    return Unauthorized();
 
-            var user = await _userManager.FindByEmailAsync(email);
-            if (user == null)
-                return Unauthorized();
+        var user = await _userManager.FindByEmailAsync(email);
+  if (user == null)
+         return Unauthorized();
 
-            var roles = await _userManager.GetRolesAsync(user);
+  var roles = await _userManager.GetRolesAsync(user);
 
             // First, get the member WITH interests and industry tags loaded
-            var memberEntity = await _context.Members
-                .Include(m => m.Interests)
-                .Include(m => m.IndustryTags)
-                .FirstOrDefaultAsync(m => m.ApplicationUserId == user.Id);
+        var memberEntity = await _context.Members
+  .Include(m => m.Interests)
+   .Include(m => m.IndustryTags)
+        .FirstOrDefaultAsync(m => m.ApplicationUserId == user.Id);
 
-            // Then, manually project to anonymous object
-            object member = null;
+          // Then, manually projection to anonymous object
+        object member = null;
             if (memberEntity != null)
-            {
-                member = new
-                {
-                    memberEntity.MemberId,
-                    memberEntity.CompanyName,
-                    memberEntity.ContactPerson,
-                    memberEntity.Email,
-                    memberEntity.WeChatWorkId,
-                    memberEntity.Country,
-                    memberEntity.PreferredLanguage,
-                    memberEntity.PreferredChannel,
-                    memberEntity.MembershipType,
-                    memberEntity.CreatedAt,
-                    memberEntity.NotificationChannels,
-                    memberEntity.NotificationFrequency,        // ADD THIS LINE
-                    memberEntity.NotificationLanguage,         // ADD THIS LINE
-                    memberEntity.ApplyToAllTopics,             // ADD THIS LINE
-                    Interests = memberEntity.Interests?.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH }).ToList(),
-                    IndustryTags = memberEntity.IndustryTags?.Select(i => new { i.IndustryTagId, i.NameEN, i.NameZH }).ToList()
-                };
+{
+          member = new
+      {
+        memberEntity.MemberId,
+        memberEntity.CompanyName,
+        memberEntity.ContactPerson,
+      memberEntity.Email,
+       memberEntity.WeChatWorkId,
+  memberEntity.Country,
+        memberEntity.PreferredLanguage,
+             memberEntity.PreferredChannel,
+        memberEntity.MembershipType,
+        memberEntity.CreatedAt,
+       memberEntity.NotificationChannels,
+    memberEntity.NotificationFrequency,
+     memberEntity.NotificationLanguage,
+     memberEntity.ApplyToAllTopics,
+     Interests = memberEntity.Interests?.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH }).ToList(),
+     IndustryTags = memberEntity.IndustryTags?.Select(i => new { i.IndustryTagId, i.NameEN, i.NameZH }).ToList()
+   };
             }
 
-            return Ok(new
-            {
-                user.Id,
-                user.Email,
-                user.UserName,
-                user.Name,
-                user.WeChatWorkId,
+  return Ok(new
+   {
+     user.Id,
+            user.Email,
+        user.UserName,
+  user.Name,
+           user.WeChatWorkId,
                 user.IsActive,
-                user.Lastlogin,
-                Roles = roles,
-                Member = member
-            });
+    user.Lastlogin,
+          Roles = roles,
+       Member = member
+      });
+      }
+
+        // --------------------- DELETE MEMBER (Consultant only) ------------------------------
+   [HttpDelete("delete-member/{memberId}")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> DeleteMember(int memberId)
+   {
+            try
+            {
+    var member = await _context.Members.FirstOrDefaultAsync(m => m.MemberId == memberId);
+ if (member == null)
+                 return NotFound(new { message = "Member not found." });
+
+           // Get the associated ApplicationUser
+        var appUser = await _userManager.FindByIdAsync(member.ApplicationUserId);
+         
+    // Remove member from database
+         _context.Members.Remove(member);
+             await _context.SaveChangesAsync();
+
+           // Delete the associated ApplicationUser if it exists
+    if (appUser != null)
+           {
+        var deleteResult = await _userManager.DeleteAsync(appUser);
+        if (!deleteResult.Succeeded)
+   return BadRequest(new { message = "Member deleted but user account deletion failed.", errors = deleteResult.Errors });
+       }
+
+       return Ok(new { message = "Member and associated user account deleted successfully." });
+            }
+         catch (Exception ex)
+       {
+  return StatusCode(500, new { message = "Error deleting member: " + ex.Message });
+     }
         }
     }
 }
