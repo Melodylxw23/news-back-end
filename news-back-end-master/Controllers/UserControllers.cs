@@ -181,6 +181,9 @@ namespace News_Back_end.Controllers
             if (await _userManager.FindByEmailAsync(dto.Email) != null)
                 return BadRequest(new { message = "Email is already registered." });
 
+            // Generate temporary password for the consultant (admin does not provide password)
+            var tempPassword = GenerateTemporaryPassword();
+
             var user = new ApplicationUser
             {
                 UserName = dto.Email,
@@ -192,7 +195,7 @@ namespace News_Back_end.Controllers
                 MustChangePassword = true  // Force password change on first login
             };
 
-            var result = await _userManager.CreateAsync(user, dto.OneTimePassword);
+            var result = await _userManager.CreateAsync(user, tempPassword);
             if (!result.Succeeded)
                 return BadRequest(result.Errors);
 
@@ -202,7 +205,38 @@ namespace News_Back_end.Controllers
 
             await _userManager.AddToRoleAsync(user, "Consultant");
 
+            // Send email to consultant with secret code and temporary password
+            await SendConsultantRegistrationEmail(user.Email, tempPassword);
+
             return Ok(new { message = "Consultant created successfully. They must change password on first login." });
+        }
+
+        // Helper method to send consultant registration email (includes secret code and temporary password)
+        private async Task SendConsultantRegistrationEmail(string email, string tempPassword)
+        {
+            var subject = "Your Consultant Account Has Been Created";
+
+            // Get secret code for consultant role from configuration
+            var consultantSecret = _config["RoleSecretCodes:Consultant"] ?? string.Empty;
+
+            // Generate password reset token for the email link
+            var user = await _userManager.FindByEmailAsync(email);
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebUtility.UrlEncode(token);
+
+            var resetLink = $"{_config["Frontend:ResetPasswordUrl"]}?email={WebUtility.UrlEncode(email)}&token={encodedToken}";
+
+            var html = $@"
+<p>Hello,</p>
+<p>An administrator has created a Consultant account for you. Please use the information below to access your account:</p>
+<p><strong>Email:</strong> {email}</p>
+<p><strong>Temporary Password:</strong> {tempPassword}</p>
+<p><strong>Consultant Secret Code:</strong> {consultantSecret}</p>
+<p>For security reasons, you must change your password on your first login.</p>
+<p><a href='{resetLink}'>Click here to set your new password</a></p>
+<p>Best regards,<br/>The News Team</p>";
+
+            await _emailService.SendEmailAsync(email, subject, html);
         }
 
         // --------------------- SET INITIAL PASSWORD (for first-time login) ------------------------------
@@ -832,5 +866,35 @@ return NotFound("User not found.");
   return StatusCode(500, new { message = "Error deleting member: " + ex.Message });
      }
         }
+
+        // --------------------- DELETE CONSULTANT (Admin only) ------------------------------
+ [HttpDelete("delete-consultant/{consultantId}")]
+ [Authorize(Roles = "Admin")]
+ public async Task<IActionResult> DeleteConsultant(string consultantId)
+ {
+ try
+ {
+ if (string.IsNullOrEmpty(consultantId))
+ return BadRequest(new { message = "Consultant id is required." });
+
+ var user = await _userManager.FindByIdAsync(consultantId);
+ if (user == null)
+ return NotFound(new { message = "Consultant not found." });
+
+ // Ensure target is a Consultant
+ if (!await _userManager.IsInRoleAsync(user, "Consultant"))
+ return BadRequest(new { message = "The specified user is not a Consultant." });
+
+ var deleteResult = await _userManager.DeleteAsync(user);
+ if (!deleteResult.Succeeded)
+ return BadRequest(new { message = "Failed to delete consultant.", errors = deleteResult.Errors });
+
+ return Ok(new { message = "Consultant account deleted successfully." });
+ }
+ catch (Exception ex)
+ {
+ return StatusCode(500, new { message = "Error deleting consultant: " + ex.Message });
+ }
+ }
     }
 }

@@ -10,9 +10,5 @@ namespace News_Back_end.DTOs
         [Required]
         [EmailAddress]
         public string Email { get; set; }
-
-        [Required]
-        [MinLength(6)]
-        public string OneTimePassword { get; set; }
     }
 }
