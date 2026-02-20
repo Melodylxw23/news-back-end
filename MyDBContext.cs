@@ -24,11 +24,24 @@ namespace News_Back_end
         public DbSet<SourceDescriptionSetting> SourceDescriptionSettings { get; set; } = null!;
         public DbSet<FetchMetric> FetchMetrics { get; set; } = null!;
         public DbSet<PublicationDraft> PublicationDrafts { get; set; } = null!;
-        // ArticleLabel removed - not used
+        public DbSet<AutoFetchSetting> AutoFetchSettings { get; set; } = null!;
+        public DbSet<FetchAttempt> FetchAttempts { get; set; } = null!;
+        public DbSet<FetchAttemptArticle> FetchAttemptArticles { get; set; } = null!;
+        public DbSet<FetchedArticleUrl> FetchedArticleUrls { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<AutoFetchSetting>()
+                .HasIndex(x => x.ApplicationUserId)
+                .IsUnique();
+
+            modelBuilder.Entity<AutoFetchSetting>()
+                .HasOne(x => x.ApplicationUser)
+                .WithMany()
+                .HasForeignKey(x => x.ApplicationUserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Member>()
                 .HasMany(m => m.IndustryTags)
@@ -102,6 +115,33 @@ namespace News_Back_end
                 .HasMany(p => p.InterestTags)
                 .WithMany(i => i.PublicationDrafts)
                 .UsingEntity(j => j.ToTable("PublicationDraftInterestTags"));
+
+            modelBuilder.Entity<FetchAttempt>()
+                .HasOne(x => x.ApplicationUser)
+                .WithMany()
+                .HasForeignKey(x => x.ApplicationUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<FetchAttemptArticle>()
+                .HasOne(x => x.FetchAttempt)
+                .WithMany(a => a.Articles)
+                .HasForeignKey(x => x.FetchAttemptId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<FetchAttemptArticle>()
+                .HasOne(x => x.NewsArticle)
+                .WithMany()
+                .HasForeignKey(x => x.NewsArticleId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<FetchAttemptArticle>()
+                .HasIndex(x => new { x.FetchAttemptId, x.NewsArticleId })
+                .IsUnique();
+
+            // FetchedArticleUrl: unique constraint on (user + URL) and index for fast dedup
+            modelBuilder.Entity<FetchedArticleUrl>()
+                  .HasIndex(x => new { x.ApplicationUserId, x.SourceURL })
+     .IsUnique();
         }
 
 

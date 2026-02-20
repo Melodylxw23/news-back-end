@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using System;
+using System.ComponentModel.DataAnnotations;
 
 namespace News_Back_end.Models.SQLServer
 {
@@ -14,7 +15,13 @@ namespace News_Back_end.Models.SQLServer
         public string SummaryTone { get; set; } = "neutral";
         public string SummaryFormat { get; set; } = "paragraph";
         public string? CustomKeyPoints { get; set; }
-        public int MaxArticlesPerFetch { get; set; } = 10;
+
+        private int? _maxArticlesPerFetch = null;
+        public int? MaxArticlesPerFetch
+        {
+            get => _maxArticlesPerFetch;
+            set => _maxArticlesPerFetch = value.HasValue ? Math.Clamp(value.Value, 1, 10) : null;
+        }
 
         public bool IncludeOriginalChinese { get; set; } = true;
         public bool IncludeEnglishSummary { get; set; } = true;

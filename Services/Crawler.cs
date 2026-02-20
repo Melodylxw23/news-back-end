@@ -488,7 +488,7 @@ namespace News_Back_end.Services
                     }
                     catch { /* ignore */ }
                     // increase per-source discovery limit to fetch more articles from HTML pages
-                    if (resolved.Count >= 100) break;
+                    if (resolved.Count >=20) break;
                 }
 
                 // Fetch each article page and extract content
@@ -713,7 +713,27 @@ namespace News_Back_end.Services
                 var factory = scope.ServiceProvider.GetRequiredService<CrawlerFactory>();
                 var db = scope.ServiceProvider.GetRequiredService<MyDBContext>();
 
-                var sources = await db.Sources.ToListAsync(stoppingToken);
+                // Per-user toggle: only run if at least one user enabled auto-fetch.
+                // Use the minimum interval among enabled users as the global loop delay.
+                var enabledSettings = await db.AutoFetchSettings
+                .AsNoTracking()
+                .Where(x => x.Enabled)
+                .ToListAsync(stoppingToken);
+
+                var intervalSeconds = enabledSettings.Count ==0
+                ?300
+                : enabledSettings.Min(x => x.IntervalSeconds);
+                if (intervalSeconds <10) intervalSeconds =10;
+
+                if (enabledSettings.Count ==0)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
+                    continue;
+                }
+
+                var sources = await db.Sources
+                .Where(s => s.IsActive)
+                .ToListAsync(stoppingToken);
 
                 foreach (var source in sources)
                 {
@@ -741,7 +761,7 @@ namespace News_Back_end.Services
                             perSourceSettings = new SourceDescriptionSetting
                             {
                                 MinArticleLength = 0,
-                                MaxArticlesPerFetch = 100,
+                                MaxArticlesPerFetch = 5,
                                 TranslateOnFetch = true,
                                 IncludeEnglishSummary = true,
                                 IncludeChineseSummary = true,
@@ -871,41 +891,95 @@ namespace News_Back_end.Services
                         Console.WriteLine($"Error crawling source {source.Name}: {ex.Message}");
                     }
                 }
+
+                // sleep between cycles to avoid a tight loop
+                await Task.Delay(TimeSpan.FromSeconds(intervalSeconds), stoppingToken);
             }
         }
     }
+    public class CrawlResult
+ {
+ public List<ArticleDtos> Processed { get; set; } = new List<ArticleDtos>();
+ public int RawCount { get; set; }
+ public int DuplicateSkipped { get; set; }
+ }
+
     public class UnifiedCrawlerService
     {
         private readonly RSSCrawlerService _rss;
         private readonly HTMLCrawlerService _html;
         private readonly APICrawlerservice _api;
         private readonly ArticleProcessor _processor;
+        private readonly MyDBContext _db;
 
-        public UnifiedCrawlerService(RSSCrawlerService rss, HTMLCrawlerService html, APICrawlerservice api, ArticleProcessor processor)
+        public UnifiedCrawlerService(RSSCrawlerService rss, HTMLCrawlerService html, APICrawlerservice api, ArticleProcessor processor, MyDBContext db)
         {
             _rss = rss;
             _html = html;
             _api = api;
             _processor = processor;
+            _db = db;
         }
 
-        public async Task<List<ArticleDtos>> CrawlAsync(Source source, SourceDescriptionSetting settings)
+        // Return CrawlResult including processed articles and counts.
+        // userId is used to check the FetchedArticleUrls history so we don't
+        // re-fetch articles the user has already seen (even if they were deleted).
+        public async Task<CrawlResult> CrawlAsync(Source source, SourceDescriptionSetting settings, bool force = false, string? userId = null)
         {
-            List<CrawlerDTO> rawArticles = source.Type switch
-            {
-                SourceType.rss => await _rss.CrawlAsync(source),
-                SourceType.html => await _html.CrawlAsync(source),
-                SourceType.api => await _api.CrawlAsync(source),
-                _ => new List<CrawlerDTO>()
-            };
+     List<CrawlerDTO> rawArticles = source.Type switch
+       {
+   SourceType.rss => await _rss.CrawlAsync(source),
+       SourceType.html => await _html.CrawlAsync(source),
+           SourceType.api => await _api.CrawlAsync(source),
+     _ => new List<CrawlerDTO>()
+     };
 
-            var processed = new List<ArticleDtos>();
-            foreach (var raw in rawArticles.Take(settings.MaxArticlesPerFetch))
+    var result = new CrawlResult { RawCount = rawArticles.Count };
+
+ // Determine how many NEW (non-duplicate) articles we want
+      int cap = settings.MaxArticlesPerFetch ?? rawArticles.Count;
+
+     Console.WriteLine($"[UnifiedCrawler] Source={source.SourceId} rawCount={rawArticles.Count} cap={cap} force={force}");
+
+           // Iterate through ALL raw articles, skip duplicates, stop once we
+    // have collected enough new articles to satisfy the cap.
+ foreach (var raw in rawArticles)
+  {
+     // Already collected enough new articles
+     if (result.Processed.Count >= cap) break;
+
+     if (!force && !string.IsNullOrWhiteSpace(raw.SourceURL))
+     {
+        // Check 1: does it already exist in NewsArticles?
+  var existsInArticles = await _db.NewsArticles.AnyAsync(x => x.SourceURL == raw.SourceURL);
+      if (existsInArticles)
+     {
+        result.DuplicateSkipped++;
+    Console.WriteLine($"[UnifiedCrawler] Skipped duplicate (in NewsArticles): {raw.SourceURL}");
+       continue;
+          }
+
+        // Check 2: was it previously fetched by this user (even if the article was deleted)?
+      if (!string.IsNullOrWhiteSpace(userId))
+   {
+   var previouslyFetched = await _db.FetchedArticleUrls.AnyAsync(
+      x => x.ApplicationUserId == userId && x.SourceURL == raw.SourceURL);
+       if (previouslyFetched)
             {
-                var article = await _processor.ProcessArticle(raw, settings);
-                if (article != null) processed.Add(article);
-            }
-            return processed;
+           result.DuplicateSkipped++;
+     Console.WriteLine($"[UnifiedCrawler] Skipped duplicate (in fetch history): {raw.SourceURL}");
+      continue;
+       }
+          }
+        }
+
+       var article = await _processor.ProcessArticle(raw, settings);
+       if (article != null) result.Processed.Add(article);
+      }
+
+      Console.WriteLine($"[UnifiedCrawler] Source={source.SourceId} processed={result.Processed.Count} duplicatesSkipped={result.DuplicateSkipped}");
+
+            return result;
         }
     }
 

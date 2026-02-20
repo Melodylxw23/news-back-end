@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260218103519_AddAutoFetchToggling")]
+    partial class AddAutoFetchToggling
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -360,75 +363,6 @@ namespace News_Back_end.Migrations
                     b.ToTable("BroadcastMessages");
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchAttempt", b =>
-                {
-                    b.Property<int>("FetchAttemptId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("FetchAttemptId"));
-
-                    b.Property<string>("ApplicationUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<int>("AttemptNumber")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("FetchedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("MaxArticlesPerFetch")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SourceIdsSnapshot")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("SummaryFormat")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("SummaryLength")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<int?>("SummaryWordCount")
-                        .HasColumnType("int");
-
-                    b.HasKey("FetchAttemptId");
-
-                    b.HasIndex("ApplicationUserId");
-
-                    b.ToTable("FetchAttempts");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchAttemptArticle", b =>
-                {
-                    b.Property<int>("FetchAttemptArticleId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("FetchAttemptArticleId"));
-
-                    b.Property<int>("FetchAttemptId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("NewsArticleId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.HasKey("FetchAttemptArticleId");
-
-                    b.HasIndex("NewsArticleId");
-
-                    b.HasIndex("FetchAttemptId", "NewsArticleId")
-                        .IsUnique();
-
-                    b.ToTable("FetchAttemptArticles");
-                });
-
             modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchMetric", b =>
                 {
                     b.Property<int>("FetchMetricId")
@@ -458,34 +392,6 @@ namespace News_Back_end.Migrations
                     b.HasKey("FetchMetricId");
 
                     b.ToTable("FetchMetrics");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchedArticleUrl", b =>
-                {
-                    b.Property<int>("FetchedArticleUrlId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("FetchedArticleUrlId"));
-
-                    b.Property<string>("ApplicationUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("FetchedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SourceURL")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.HasKey("FetchedArticleUrlId");
-
-                    b.HasIndex("ApplicationUserId", "SourceURL")
-                        .IsUnique();
-
-                    b.ToTable("FetchedArticleUrls");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.IndustryTag", b =>
@@ -633,9 +539,6 @@ namespace News_Back_end.Migrations
 
                     b.Property<int?>("DescriptionSettingId")
                         .HasColumnType("int");
-
-                    b.Property<DateTime?>("FetchedAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("FullContentEN")
                         .HasColumnType("nvarchar(max)");
@@ -864,7 +767,7 @@ namespace News_Back_end.Migrations
                     b.Property<bool>("IncludeOriginalChinese")
                         .HasColumnType("bit");
 
-                    b.Property<int?>("MaxArticlesPerFetch")
+                    b.Property<int>("MaxArticlesPerFetch")
                         .HasColumnType("int");
 
                     b.Property<int>("MinArticleLength")
@@ -1044,36 +947,6 @@ namespace News_Back_end.Migrations
                     b.Navigation("ApplicationUser");
                 });
 
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchAttempt", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ApplicationUser")
-                        .WithMany()
-                        .HasForeignKey("ApplicationUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ApplicationUser");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchAttemptArticle", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.FetchAttempt", "FetchAttempt")
-                        .WithMany("Articles")
-                        .HasForeignKey("FetchAttemptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("News_Back_end.Models.SQLServer.NewsArticle", "NewsArticle")
-                        .WithMany()
-                        .HasForeignKey("NewsArticleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("FetchAttempt");
-
-                    b.Navigation("NewsArticle");
-                });
-
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>
                 {
                     b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ApplicationUser")
@@ -1123,11 +996,6 @@ namespace News_Back_end.Migrations
             modelBuilder.Entity("News_Back_end.Models.SQLServer.ApplicationUser", b =>
                 {
                     b.Navigation("Member");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchAttempt", b =>
-                {
-                    b.Navigation("Articles");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.IndustryTag", b =>

@@ -66,8 +66,9 @@ namespace News_Back_end.Models.SQLServer
         public string? CreatedBy { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
         public DateTime? UpdatedAt { get; set; }
+        public DateTime? FetchedAt { get; set; }
     }
 
     public enum TranslationStatus { Pending, InProgress, Translated }
-    public enum ArticleStatus { Draft, Published }
+    public enum ArticleStatus { Draft, ReadyForPublish, Published }
 }

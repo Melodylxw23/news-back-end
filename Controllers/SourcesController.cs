@@ -243,6 +243,8 @@ namespace News_Back_end.Controllers
                 try
                 {
                     articles = await crawler.CrawlAsync(src) ?? new List<CrawlerDTO>();
+                    // Default cap: only return/persist 1 article per source unless settings are added later
+                    articles = articles.Take(1).ToList();
                 }
                 catch (System.Exception ex)
                 {

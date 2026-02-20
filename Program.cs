@@ -190,9 +190,6 @@ builder.Services.AddScoped<UnifiedCrawlerService>();
 // Register ArticleProcessor for processing fetched articles
 builder.Services.AddScoped<ArticleProcessor>();
 
-// Hosted background crawler
-builder.Services.AddHostedService<NewsCrawlerBackgroundService>();
-
 // OpenAI translator (optional) - configure via appsettings or env
 var openAIApiKey = builder.Configuration["OpenAI:ApiKey"];
 var openAIBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
