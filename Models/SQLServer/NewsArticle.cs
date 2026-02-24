@@ -70,5 +70,5 @@ namespace News_Back_end.Models.SQLServer
     }
 
     public enum TranslationStatus { Pending, InProgress, Translated }
-    public enum ArticleStatus { Draft, ReadyForPublish, Published }
+    public enum ArticleStatus { Draft, ReadyForPublish, Scheduled, Published, Unpublished }
 }
