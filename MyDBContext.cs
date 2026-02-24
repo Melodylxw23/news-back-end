@@ -25,6 +25,18 @@ namespace News_Back_end
         public DbSet<FetchMetric> FetchMetrics { get; set; } = null!;
         public DbSet<PublicationDraft> PublicationDrafts { get; set; } = null!;
         public DbSet<BroadcastDelivery> BroadcastDeliveries { get; set; } = null!;
+        public DbSet<BroadcastLinkClick> BroadcastLinkClicks { get; set; } = null!;
+        public DbSet<BroadcastAnalyticsSummary> BroadcastAnalyticsSummaries { get; set; } = null!;
+        public DbSet<TopicPerformanceMetric> TopicPerformanceMetrics { get; set; } = null!;
+        public DbSet<MemberEngagementProfile> MemberEngagementProfiles { get; set; } = null!;
+        public DbSet<DailyBroadcastMetric> DailyBroadcastMetrics { get; set; } = null!;
+        public DbSet<AutoFetchSetting> AutoFetchSettings { get; set; } = null!;
+        public DbSet<FetchAttempt> FetchAttempts { get; set; } = null!;
+        public DbSet<FetchAttemptArticle> FetchAttemptArticles { get; set; } = null!;
+        public DbSet<FetchedArticleUrl> FetchedArticleUrls { get; set; } = null!;
+        public DbSet<ConsultantPreference> ConsultantPreferences { get; set; } = null!;
+        public DbSet<ConsultantInsightsSendLog> ConsultantInsightsSendLogs { get; set; } = null!;
+        public DbSet<ConsultantInsightsHistory> ConsultantInsightsHistories { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
