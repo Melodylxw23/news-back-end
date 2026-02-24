@@ -14,6 +14,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.Tasks;
+using static News_Back_end.Controllers.SourcesController;
 
 namespace News_Back_end.Controllers
 {
@@ -23,19 +24,22 @@ namespace News_Back_end.Controllers
     {
         private readonly MyDBContext _db;
         private readonly CrawlerFactory _factory;
+        private readonly ITranslationService? _translationService;
         private readonly IServiceProvider _services;
         private readonly ArticleProcessor _processor;
 
-        public ArticlesController(MyDBContext db, CrawlerFactory factory, IServiceProvider services, ArticleProcessor processor)
+        public ArticlesController(MyDBContext db, CrawlerFactory factory, IServiceProvider services, ArticleProcessor processor, ITranslationService? translationService = null)
         {
             _db = db;
             _factory = factory;
             _services = services;
+            _translationService = translationService;
             _processor = processor;
         }
 
         private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
 
+        // Clean HTML and decode entities to plain text
         private static string CleanHtml(string html)
         {
             if (string.IsNullOrWhiteSpace(html)) return string.Empty;
@@ -100,17 +104,25 @@ namespace News_Back_end.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> Get([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? status = null)
+        public async Task<IActionResult> Get([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? status = null, [FromQuery] string? articleStatus = null)
         {
             if (page <= 0) page = 1;
-            if (pageSize <= 0 || pageSize > 100) pageSize = 20;
+            if (pageSize <= 0 || pageSize > 10000) pageSize = 20;
 
             var q = _db.NewsArticles.AsQueryable();
 
-            // Filter by translation status if provided
+            // Filter by TranslationStatus if ?status= is provided
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<Models.SQLServer.TranslationStatus>(status, true, out var parsedStatus))
             {
                 q = q.Where(a => a.TranslationStatus == parsedStatus);
+            }
+
+            // NEW: also support filtering by ArticleStatus via ?articleStatus=
+            // Used by member articles page to show only consultant-published articles.
+            // Example: ?articleStatus=Published  =>  ArticleStatus.Published
+            if (!string.IsNullOrWhiteSpace(articleStatus) && Enum.TryParse<ArticleStatus>(articleStatus, true, out var parsedArticleStatus))
+            {
+                q = q.Where(a => a.Status == parsedArticleStatus);
             }
 
             q = q.OrderByDescending(a => a.PublishedAt ?? a.CreatedAt);
@@ -140,6 +152,92 @@ namespace News_Back_end.Controllers
             return Ok(new PagedResult<ArticleDto> { Page = page, PageSize = pageSize, Total = total, Items = dtos });
         }
 
+        // GET: api/articles/search?q=bitcoin&page=1&pageSize=20
+        [HttpGet("search")]
+        public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        {
+            if (page <= 0) page = 1;
+            if (pageSize <= 0 || pageSize > 200) pageSize = 20;
+            if (string.IsNullOrWhiteSpace(q)) return BadRequest("query required");
+
+            var normalized = q.Trim();
+
+            var baseQ = _db.NewsArticles
+                .AsNoTracking()
+                .Where(a =>
+                    (a.TitleZH != null && a.TitleZH.Contains(normalized)) ||
+                    (a.TitleEN != null && a.TitleEN.Contains(normalized)) ||
+                    (a.OriginalContent != null && a.OriginalContent.Contains(normalized)) ||
+                    (a.FullContentEN != null && a.FullContentEN.Contains(normalized)) ||
+                    (a.FullContentZH != null && a.FullContentZH.Contains(normalized)) ||
+                    (a.SummaryEN != null && a.SummaryEN.Contains(normalized)) ||
+                    (a.SummaryZH != null && a.SummaryZH.Contains(normalized))
+                );
+
+            var total = await baseQ.LongCountAsync();
+            var items = await baseQ.OrderByDescending(a => a.PublishedAt ?? a.CreatedAt)
+                .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+
+            var dtos = items.Select(a => new ArticleDto(
+                a.NewsArticleId,
+                a.TitleZH,
+                a.TitleEN,
+                a.OriginalContent,
+                a.OriginalLanguage,
+                a.TranslationLanguage,
+                a.TranslationStatus,
+                a.SourceURL,
+                a.PublishedAt,
+                a.CrawledAt,
+                a.SourceId,
+                a.TranslationSavedBy,
+                a.TranslationSavedAt,
+                a.FullContentEN,
+                a.FullContentZH,
+                a.SummaryEN,
+                a.SummaryZH)).ToList();
+
+            return Ok(new PagedResult<ArticleDto> { Page = page, PageSize = pageSize, Total = total, Items = dtos });
+        }
+
+        // GET: /api/articles/published?page=1&pageSize=1000
+        [HttpGet("published")]
+        public async Task<IActionResult> Published([FromQuery] int page = 1, [FromQuery] int pageSize = 1000)
+        {
+            if (page <= 0) page = 1;
+            const int MaxPageSize = 10000;
+            if (pageSize <= 0 || pageSize > MaxPageSize) pageSize = Math.Min(pageSize <= 0 ? 1000 : pageSize, MaxPageSize);
+
+            var q = _db.NewsArticles
+                .AsNoTracking()
+                .Where(a => a.PublishedAt != null && a.PublishedAt <= DateTime.UtcNow)
+                .OrderByDescending(a => a.PublishedAt ?? a.CreatedAt);
+
+            var total = await q.LongCountAsync();
+            var items = await q.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+
+            var dtos = items.Select(a => new ArticleDto(
+                a.NewsArticleId,
+                a.TitleZH,
+                a.TitleEN,
+                a.OriginalContent ?? string.Empty,
+                a.OriginalLanguage ?? string.Empty,
+                a.TranslationLanguage,
+                a.TranslationStatus,
+                a.SourceURL,
+                a.PublishedAt,
+                a.CrawledAt,
+                a.SourceId,
+                a.TranslationSavedBy,
+                a.TranslationSavedAt,
+                a.FullContentEN,
+                a.FullContentZH,
+                a.SummaryEN,
+                a.SummaryZH)).ToList();
+
+            return Ok(new PagedResult<ArticleDto> { Page = page, PageSize = pageSize, Total = total, Items = dtos });
+        }
+
         // GET: api/articles/{id}?lang=zh
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id, [FromQuery] string? lang)
@@ -147,26 +245,28 @@ namespace News_Back_end.Controllers
             var a = await _db.NewsArticles.FindAsync(id);
             if (a == null) return NotFound();
 
+            var dto = new ArticleDto(
+                a.NewsArticleId,
+                a.TitleZH,
+                a.TitleEN,
+                SelectContentForLanguage(a, lang),
+                a.OriginalLanguage,
+                a.TranslationLanguage,
+                a.TranslationStatus,
+                a.SourceURL,
+                a.PublishedAt,
+                a.CrawledAt,
+                a.SourceId,
+                a.TranslationSavedBy,
+                a.TranslationSavedAt,
+                a.FullContentEN,
+                a.FullContentZH,
+                a.SummaryEN,
+                a.SummaryZH);
+
             return Ok(new
             {
-                Article = new ArticleDto(
-                    a.NewsArticleId,
-                    a.TitleZH,
-                    a.TitleEN,
-                    SelectContentForLanguage(a, lang),
-                    a.OriginalLanguage,
-                    a.TranslationLanguage,
-                    a.TranslationStatus,
-                    a.SourceURL,
-                    a.PublishedAt,
-                    a.CrawledAt,
-                    a.SourceId,
-                    a.TranslationSavedBy,
-                    a.TranslationSavedAt,
-                    a.FullContentEN,
-                    a.FullContentZH,
-                    a.SummaryEN,
-                    a.SummaryZH),
+                Article = dto,
                 OriginalContent = a.OriginalContent,
                 TranslatedContent = a.TranslatedContent,
                 FullContentEN = a.FullContentEN,
@@ -189,7 +289,6 @@ namespace News_Back_end.Controllers
             var a = await _db.NewsArticles.FindAsync(id);
             if (a == null) return NotFound();
 
-            // Also remove any FetchAttemptArticle join rows referencing this article
             var joinRows = await _db.FetchAttemptArticles.Where(x => x.NewsArticleId == id).ToListAsync();
             if (joinRows.Count > 0)
             {
@@ -203,7 +302,6 @@ namespace News_Back_end.Controllers
 
         private string SelectContentForLanguage(NewsArticle a, string? lang)
         {
-            // prefer explicit lang parameter, otherwise use Accept-Language header
             if (string.IsNullOrWhiteSpace(lang))
             {
                 var accept = Request.Headers["Accept-Language"].ToString();
@@ -212,20 +310,40 @@ namespace News_Back_end.Controllers
             }
 
             if (string.IsNullOrWhiteSpace(lang)) lang = null;
-
-            // normalize
             lang = lang?.Trim().ToLowerInvariant();
 
             if (lang != null && a.TranslatedContent != null && a.TranslationLanguage != null && lang.StartsWith(a.TranslationLanguage))
                 return a.TranslatedContent;
 
-            // fallback to original
             return a.OriginalContent;
         }
 
-        // ??????????????????????????????????????????????????????????????????
-        //  FETCH ATTEMPTS
-        // ??????????????????????????????????????????????????????????????????
+        // GET: api/articles/stats
+        [HttpGet("stats")]
+        public async Task<IActionResult> Stats()
+        {
+            var total = await _db.NewsArticles.LongCountAsync();
+
+            var translated = await _db.NewsArticles
+                .AsNoTracking()
+                .LongCountAsync(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.Translated
+                    && a.TranslationReviewedAt != null);
+
+            var inProgress = await _db.NewsArticles
+                .AsNoTracking()
+                .LongCountAsync(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.InProgress);
+
+            var pending = await _db.NewsArticles
+                .AsNoTracking()
+                .LongCountAsync(a => a.TranslationStatus == Models.SQLServer.TranslationStatus.Pending);
+
+            var bySource = await _db.NewsArticles
+                .GroupBy(a => a.SourceId)
+                .Select(g => new { SourceId = g.Key, Count = g.LongCount() })
+                .ToListAsync();
+
+            return Ok(new { total, pending, inProgress, translated, bySource });
+        }
 
         // GET: /api/articles/fetchAttempts?limit=50
         [HttpGet("fetchAttempts")]
@@ -241,14 +359,13 @@ namespace News_Back_end.Controllers
             var attempts = await _db.FetchAttempts
                 .AsNoTracking()
                 .Where(a => a.ApplicationUserId == userId)
-                .OrderBy(a => a.FetchedAt) // chronological ascending
+                .OrderBy(a => a.FetchedAt)
                 .Take(limit)
                 .Select(a => new
                 {
                     a.FetchAttemptId,
                     a.AttemptNumber,
                     a.FetchedAt,
-                    // Configuration snapshot
                     a.MaxArticlesPerFetch,
                     a.SourceIdsSnapshot,
                     a.SummaryFormat,
@@ -304,20 +421,16 @@ namespace News_Back_end.Controllers
             var userId = GetUserId();
             if (string.IsNullOrWhiteSpace(userId)) return Unauthorized();
 
-            // ?? Resolve effective settings from DTO overrides ??
-            // Determine the total number of articles to fetch (1-10, default 5)
             int totalArticlesToFetch = dto.MaxArticles
-                ?? dto.MaxArticlesPerSource // legacy alias
+                ?? dto.MaxArticlesPerSource
                 ?? dto.SourceSettingOverride?.MaxArticlesPerFetch
                 ?? 5;
             totalArticlesToFetch = Math.Clamp(totalArticlesToFetch, 1, 10);
 
-            // Determine summary format
             string effectiveSummaryFormat = dto.SummaryFormat
                 ?? dto.SourceSettingOverride?.SummaryFormat
                 ?? "paragraph";
 
-            // Determine summary length category and word count
             string? effectiveSummaryLength = dto.SummaryLength
                 ?? dto.SourceSettingOverride?.SummaryLength;
 
@@ -330,9 +443,9 @@ namespace News_Back_end.Controllers
             {
                 effectiveSummaryWordCount = effectiveSummaryLength.Trim().ToLowerInvariant() switch
                 {
-                    "short" => 75,   // 50-100 words
-                    "medium" => 150, // 100-200 words
-                    "long" => 250,   // 200-300 words
+                    "short" => 75,
+                    "medium" => 150,
+                    "long" => 250,
                     _ => dto.SourceSettingOverride?.SummaryWordCount ?? 150
                 };
             }
@@ -341,7 +454,6 @@ namespace News_Back_end.Controllers
                 effectiveSummaryWordCount = dto.SourceSettingOverride?.SummaryWordCount ?? 150;
             }
 
-            // ?? Compute next attempt number for this user ??
             int nextAttemptNumber = 1;
             var maxExisting = await _db.FetchAttempts
                 .Where(a => a.ApplicationUserId == userId)
@@ -349,7 +461,6 @@ namespace News_Back_end.Controllers
             if (maxExisting.HasValue)
                 nextAttemptNumber = maxExisting.Value + 1;
 
-            // ?? Create the attempt with configuration snapshot ??
             var attempt = new FetchAttempt
             {
                 ApplicationUserId = userId,
@@ -366,14 +477,12 @@ namespace News_Back_end.Controllers
             _db.FetchAttempts.Add(attempt);
             await _db.SaveChangesAsync();
 
-            // ?? Load selected sources ??
             var sourcesQuery = _db.Sources.AsQueryable();
             if (dto.SourceIds != null && dto.SourceIds.Count > 0)
                 sourcesQuery = sourcesQuery.Where(s => dto.SourceIds.Contains(s.SourceId));
 
             var sources = await sourcesQuery.Where(s => s.IsActive).ToListAsync();
 
-            // ?? Build effective SourceDescriptionSetting for processing ??
             var settings = new SourceDescriptionSetting
             {
                 MinArticleLength = 0,
@@ -397,7 +506,6 @@ namespace News_Back_end.Controllers
             {
                 if (remainingGlobal <= 0) break;
 
-                // Set the cap for this source to whatever remains of the global quota
                 settings.MaxArticlesPerFetch = remainingGlobal;
 
                 Console.WriteLine($"[FetchDebug] SourceId={src.SourceId} Name={src.Name} remainingGlobal={remainingGlobal} SummaryFormat={settings.SummaryFormat} SummaryWordCount={settings.SummaryWordCount}");
@@ -442,106 +550,99 @@ namespace News_Back_end.Controllers
 
                 if (crawlResult != null)
                 {
-                    // UnifiedCrawlerService already filtered duplicates and capped results.
-        // We just need to check for duplicates against articles saved earlier
-        // in THIS fetch attempt (from prior sources in the loop).
-                processedArticles = crawlResult.Processed;
-                duplicatesSkipped = crawlResult.DuplicateSkipped;
+                    processedArticles = crawlResult.Processed;
+                    duplicatesSkipped = crawlResult.DuplicateSkipped;
 
-                foreach (var article in processedArticles)
-                {
-                    if (remainingGlobal <= 0) break;
-
-                    // Guard against a URL that was saved by a prior source in this same fetch loop
-                    if (!dto.Force && !string.IsNullOrWhiteSpace(article.SourceURL))
+                    foreach (var article in processedArticles)
                     {
-                        var alreadyExists = await _db.NewsArticles.AnyAsync(x => x.SourceURL == article.SourceURL);
-                        if (alreadyExists)
+                        if (remainingGlobal <= 0) break;
+
+                        if (!dto.Force && !string.IsNullOrWhiteSpace(article.SourceURL))
+                        {
+                            var alreadyExists = await _db.NewsArticles.AnyAsync(x => x.SourceURL == article.SourceURL);
+                            if (alreadyExists)
+                            {
+                                duplicatesSkipped++;
+                                continue;
+                            }
+                        }
+
+                        var entity = new NewsArticle
+                        {
+                            TitleZH = article.TitleZH ?? string.Empty,
+                            TitleEN = article.TitleEN,
+                            OriginalContent = article.OriginalContent ?? string.Empty,
+                            TranslatedContent = article.TranslatedContent,
+                            FullContentEN = article.FullContentEN,
+                            FullContentZH = article.FullContentZH,
+                            SummaryEN = article.SummaryEN,
+                            SummaryZH = article.SummaryZH,
+                            SourceURL = article.SourceURL ?? string.Empty,
+                            PublishedAt = article.PublishedAt == default ? DateTime.Now : article.PublishedAt,
+                            OriginalLanguage = string.IsNullOrWhiteSpace(article.OriginalLanguage) ? src.Language.ToString() : article.OriginalLanguage,
+                            SourceId = src.SourceId,
+                            CreatedAt = DateTime.Now,
+                            FetchedAt = attempt.FetchedAt,
+                            TranslationSavedBy = userId,
+                            TranslationSavedAt = DateTime.UtcNow
+                        };
+
+                        entitiesToSave.Add(entity);
+                        remainingGlobal--;
+                    }
+                }
+                else
+                {
+                    foreach (var raw in rawArticles)
+                    {
+                        if (remainingGlobal <= 0) break;
+
+                        if (!string.IsNullOrWhiteSpace(raw.SourceURL) && !dto.Force)
+                        {
+                            var alreadyExists = await _db.NewsArticles.AnyAsync(x => x.SourceURL == raw.SourceURL);
+                            if (alreadyExists)
+                            {
+                                duplicatesSkipped++;
+                                continue;
+                            }
+                        }
+
+                        var previouslyFetched = await _db.FetchedArticleUrls.AnyAsync(
+                            x => x.ApplicationUserId == userId && x.SourceURL == raw.SourceURL);
+                        if (previouslyFetched)
                         {
                             duplicatesSkipped++;
                             continue;
                         }
-                    }
 
-                    var entity = new NewsArticle
-                    {
-                        TitleZH = article.TitleZH ?? string.Empty,
-                        TitleEN = article.TitleEN,
-                        OriginalContent = article.OriginalContent ?? string.Empty,
-                        TranslatedContent = article.TranslatedContent,
-                        FullContentEN = article.FullContentEN,
-                        FullContentZH = article.FullContentZH,
-                        SummaryEN = article.SummaryEN,
-                        SummaryZH = article.SummaryZH,
-                        SourceURL = article.SourceURL ?? string.Empty,
-                        PublishedAt = article.PublishedAt == default ? DateTime.Now : article.PublishedAt,
-                        OriginalLanguage = string.IsNullOrWhiteSpace(article.OriginalLanguage) ? src.Language.ToString() : article.OriginalLanguage,
-                        SourceId = src.SourceId,
-                        CreatedAt = DateTime.Now,
-                        FetchedAt = attempt.FetchedAt,
-                        TranslationSavedBy = userId,
-                        TranslationSavedAt = DateTime.UtcNow
-                    };
+                        var article = await _processor.ProcessArticle(raw, settings);
+                        if (article == null) continue;
 
-                    entitiesToSave.Add(entity);
-                    remainingGlobal--;
-                }
-            }
-            else
-            {
-                // Old flow: process raw articles.
-     // Iterate through ALL raw articles, skip duplicates, stop once we have enough.
-                foreach (var raw in rawArticles)
-                {
-                    if (remainingGlobal <= 0) break;
-
-                    if (!string.IsNullOrWhiteSpace(raw.SourceURL) && !dto.Force)
-                    {
-                        var alreadyExists = await _db.NewsArticles.AnyAsync(x => x.SourceURL == raw.SourceURL);
-                        if (alreadyExists)
+                        var entity = new NewsArticle
                         {
-                            duplicatesSkipped++;
-                            continue;
-                        }
+                            TitleZH = article.TitleZH ?? string.Empty,
+                            TitleEN = article.TitleEN,
+                            OriginalContent = article.OriginalContent ?? string.Empty,
+                            TranslatedContent = article.TranslatedContent,
+                            FullContentEN = article.FullContentEN,
+                            FullContentZH = article.FullContentZH,
+                            SummaryEN = article.SummaryEN,
+                            SummaryZH = article.SummaryZH,
+                            SourceURL = article.SourceURL ?? string.Empty,
+                            PublishedAt = article.PublishedAt == default ? DateTime.Now : article.PublishedAt,
+                            OriginalLanguage = string.IsNullOrWhiteSpace(article.OriginalLanguage) ? src.Language.ToString() : article.OriginalLanguage,
+                            SourceId = src.SourceId,
+                            CreatedAt = DateTime.Now,
+                            FetchedAt = attempt.FetchedAt,
+                            TranslationSavedBy = userId,
+                            TranslationSavedAt = DateTime.UtcNow
+                        };
+
+                        entitiesToSave.Add(entity);
+                        processedArticles.Add(article);
+                        remainingGlobal--;
                     }
-
-                    // Also check user's fetch history
-      var previouslyFetched = await _db.FetchedArticleUrls.AnyAsync(
-         x => x.ApplicationUserId == userId && x.SourceURL == raw.SourceURL);
-      if (previouslyFetched)
-      {
-    duplicatesSkipped++;
-      continue;
-   }
-
-                    var article = await _processor.ProcessArticle(raw, settings);
-                    if (article == null) continue;
-
-                    var entity = new NewsArticle
-                    {
-                        TitleZH = article.TitleZH ?? string.Empty,
-                        TitleEN = article.TitleEN,
-                        OriginalContent = article.OriginalContent ?? string.Empty,
-                        TranslatedContent = article.TranslatedContent,
-                        FullContentEN = article.FullContentEN,
-                        FullContentZH = article.FullContentZH,
-                        SummaryEN = article.SummaryEN,
-                        SummaryZH = article.SummaryZH,
-                        SourceURL = article.SourceURL ?? string.Empty,
-                        PublishedAt = article.PublishedAt == default ? DateTime.Now : article.PublishedAt,
-                        OriginalLanguage = string.IsNullOrWhiteSpace(article.OriginalLanguage) ? src.Language.ToString() : article.OriginalLanguage,
-                        SourceId = src.SourceId,
-                        CreatedAt = DateTime.Now,
-                        FetchedAt = attempt.FetchedAt,
-                        TranslationSavedBy = userId,
-                        TranslationSavedAt = DateTime.UtcNow
-                    };
-
-                    entitiesToSave.Add(entity);
-                    processedArticles.Add(article);
-                    remainingGlobal--;
                 }
-            }
 
                 Console.WriteLine($"[FetchDebug] Source={src.SourceId} entitiesToSave={entitiesToSave.Count} duplicatesSkipped={duplicatesSkipped}");
 
@@ -560,7 +661,6 @@ namespace News_Back_end.Controllers
                             SortOrder = attemptSortOrder++
                         });
 
-                        // Record this URL in the user's fetch history for future dedup
                         if (!string.IsNullOrWhiteSpace(saved.SourceURL))
                         {
                             var alreadyTracked = await _db.FetchedArticleUrls.AnyAsync(
@@ -597,7 +697,6 @@ namespace News_Back_end.Controllers
                 attempt.FetchAttemptId,
                 attempt.AttemptNumber,
                 attempt.FetchedAt,
-                // Echo back the configuration used
                 Configuration = new
                 {
                     maxArticles = totalArticlesToFetch,
@@ -613,7 +712,6 @@ namespace News_Back_end.Controllers
         }
 
         // DELETE: /api/articles/fetchAttempts/{id}
-        // Deletes the fetch attempt AND all articles that belong to it.
         [HttpDelete("fetchAttempts/{id:int}")]
         [Authorize(Roles = "Consultant")]
         public async Task<IActionResult> DeleteFetchAttempt(int id)
@@ -626,13 +724,9 @@ namespace News_Back_end.Controllers
                 .FirstOrDefaultAsync(a => a.FetchAttemptId == id && a.ApplicationUserId == userId);
             if (attempt == null) return NotFound();
 
-            // Collect article IDs to delete
             var articleIds = attempt.Articles.Select(a => a.NewsArticleId).ToList();
-
-            // Remove join rows (cascade should handle this, but be explicit)
             _db.FetchAttemptArticles.RemoveRange(attempt.Articles);
 
-            // Remove the actual news articles
             if (articleIds.Count > 0)
             {
                 var articles = await _db.NewsArticles
@@ -641,18 +735,14 @@ namespace News_Back_end.Controllers
                 _db.NewsArticles.RemoveRange(articles);
             }
 
-            // Remove the fetch attempt itself
             _db.FetchAttempts.Remove(attempt);
             await _db.SaveChangesAsync();
-
-            // Renumber remaining attempts for this user in chronological order
             await RenumberFetchAttempts(userId);
 
             return NoContent();
         }
 
         // DELETE: /api/articles/fetchAttempts/{attemptId}/articles/{articleId}
-        // Deletes a single article from a fetch attempt.
         [HttpDelete("fetchAttempts/{attemptId:int}/articles/{articleId:int}")]
         [Authorize(Roles = "Consultant")]
         public async Task<IActionResult> DeleteArticleFromFetchAttempt(int attemptId, int articleId)
@@ -668,10 +758,8 @@ namespace News_Back_end.Controllers
                 .FirstOrDefaultAsync(x => x.FetchAttemptId == attemptId && x.NewsArticleId == articleId);
             if (joinRow == null) return NotFound("Article not found in this fetch attempt.");
 
-            // Remove the join row
             _db.FetchAttemptArticles.Remove(joinRow);
 
-            // Remove the actual article from the database
             var article = await _db.NewsArticles.FindAsync(articleId);
             if (article != null)
             {
@@ -680,7 +768,6 @@ namespace News_Back_end.Controllers
 
             await _db.SaveChangesAsync();
 
-            // Reorder remaining articles' SortOrder within this attempt
             var remainingJoins = await _db.FetchAttemptArticles
                 .Where(x => x.FetchAttemptId == attemptId)
                 .OrderBy(x => x.SortOrder)
@@ -695,8 +782,6 @@ namespace News_Back_end.Controllers
         }
 
         // POST: /api/articles/markReadyForPublish
-        // Body: { "articleIds": [1, 2, 3] }
-        // Marks selected articles as "ReadyForPublish" so they appear in the PublishQueue.
         [HttpPost("markReadyForPublish")]
         [Authorize(Roles = "Consultant")]
         public async Task<IActionResult> MarkReadyForPublish([FromBody] BatchIdsDto dto)
@@ -719,7 +804,6 @@ namespace News_Back_end.Controllers
         }
 
         // DELETE: /api/articles/fetchAttempts
-        // Deletes all fetch attempts (and their articles) for the current consultant.
         [HttpDelete("fetchAttempts")]
         [Authorize(Roles = "Consultant")]
         public async Task<IActionResult> DeleteAllFetchAttempts()
@@ -734,17 +818,14 @@ namespace News_Back_end.Controllers
 
             if (attempts.Count == 0) return NoContent();
 
-            // Collect all article IDs
             var allArticleIds = attempts
                 .SelectMany(a => a.Articles.Select(x => x.NewsArticleId))
                 .Distinct()
                 .ToList();
 
-            // Remove all join rows
             var allJoinRows = attempts.SelectMany(a => a.Articles).ToList();
             _db.FetchAttemptArticles.RemoveRange(allJoinRows);
 
-            // Remove all articles
             if (allArticleIds.Count > 0)
             {
                 var articles = await _db.NewsArticles
@@ -753,14 +834,12 @@ namespace News_Back_end.Controllers
                 _db.NewsArticles.RemoveRange(articles);
             }
 
-            // Remove all attempts
             _db.FetchAttempts.RemoveRange(attempts);
             await _db.SaveChangesAsync();
 
             return NoContent();
         }
 
-        // Helper: renumber all fetch attempts for a user in ascending chronological order starting from 1
         private async Task RenumberFetchAttempts(string userId)
         {
             var remaining = await _db.FetchAttempts

@@ -30,7 +30,7 @@ namespace News_Back_end.Controllers
 
         public UserControllers(MyDBContext context, IConfiguration config,
             UserManager<ApplicationUser> userManager,
-            SignInManager<ApplicationUser> signInManager, 
+            SignInManager<ApplicationUser> signInManager,
             RoleManager<IdentityRole> roleManager,
             GmailEmailService emailService,
             IWebHostEnvironment env,
@@ -93,23 +93,23 @@ namespace News_Back_end.Controllers
 
         // GET: api/UserControllers/members
         [HttpGet("members")]
-        [Authorize(Roles = "Admin")]
+        [Authorize(Roles = "Admin,Consultant")]
         public async Task<IActionResult> GetAllMembers()
         {
             var members = await _context.Members
-                .Include(m => m.IndustryTags)
-                .Include(m => m.Interests)
-                .Select(m => new
-                {
-                    m.MemberId,
-                    Name = m.ContactPerson,
-                    m.Email,
-                    m.CompanyName,
-                    IndustryTags = m.IndustryTags.Select(t => new { t.IndustryTagId, t.NameEN, t.NameZH }).ToList(),
-                    InterestTags = m.Interests.Select(t => new { t.InterestTagId, t.NameEN, t.NameZH }).ToList(),
-                    IsActive = _context.Users.Where(u => u.Id == m.ApplicationUserId).Select(u => u.IsActive).FirstOrDefault()
-                })
-                .ToListAsync();
+      .Include(m => m.IndustryTags)
+    .Include(m => m.Interests)
+       .Select(m => new
+       {
+           m.MemberId,
+           Name = m.ContactPerson,
+           m.Email,
+           m.CompanyName,
+           IndustryTags = m.IndustryTags.Select(t => new { t.IndustryTagId, t.NameEN, t.NameZH }).ToList(),
+           InterestTags = m.Interests.Select(t => new { t.InterestTagId, t.NameEN, t.NameZH }).ToList(),
+           IsActive = _context.Users.Where(u => u.Id == m.ApplicationUserId).Select(u => u.IsActive).FirstOrDefault()
+       })
+            .ToListAsync();
 
             return Ok(new { message = "Members retrieved successfully.", data = members });
         }
@@ -181,6 +181,9 @@ namespace News_Back_end.Controllers
             if (await _userManager.FindByEmailAsync(dto.Email) != null)
                 return BadRequest(new { message = "Email is already registered." });
 
+            // Generate temporary password for the consultant (admin does not provide password)
+            var tempPassword = GenerateTemporaryPassword();
+
             var user = new ApplicationUser
             {
                 UserName = dto.Email,
@@ -192,7 +195,7 @@ namespace News_Back_end.Controllers
                 MustChangePassword = true  // Force password change on first login
             };
 
-            var result = await _userManager.CreateAsync(user, dto.OneTimePassword);
+            var result = await _userManager.CreateAsync(user, tempPassword);
             if (!result.Succeeded)
                 return BadRequest(result.Errors);
 
@@ -202,7 +205,38 @@ namespace News_Back_end.Controllers
 
             await _userManager.AddToRoleAsync(user, "Consultant");
 
+            // Send email to consultant with secret code and temporary password
+            await SendConsultantRegistrationEmail(user.Email, tempPassword);
+
             return Ok(new { message = "Consultant created successfully. They must change password on first login." });
+        }
+
+        // Helper method to send consultant registration email (includes secret code and temporary password)
+        private async Task SendConsultantRegistrationEmail(string email, string tempPassword)
+        {
+            var subject = "Your Consultant Account Has Been Created";
+
+            // Get secret code for consultant role from configuration
+            var consultantSecret = _config["RoleSecretCodes:Consultant"] ?? string.Empty;
+
+            // Generate password reset token for the email link
+            var user = await _userManager.FindByEmailAsync(email);
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebUtility.UrlEncode(token);
+
+            var resetLink = $"{_config["Frontend:ResetPasswordUrl"]}?email={WebUtility.UrlEncode(email)}&token={encodedToken}";
+
+            var html = $@"
+<p>Hello,</p>
+<p>An administrator has created a Consultant account for you. Please use the information below to access your account:</p>
+<p><strong>Email:</strong> {email}</p>
+<p><strong>Temporary Password:</strong> {tempPassword}</p>
+<p><strong>Consultant Secret Code:</strong> {consultantSecret}</p>
+<p>For security reasons, you must change your password on your first login.</p>
+<p><a href='{resetLink}'>Click here to set your new password</a></p>
+<p>Best regards,<br/>The News Team</p>";
+
+            await _emailService.SendEmailAsync(email, subject, html);
         }
 
         // --------------------- SET INITIAL PASSWORD (for first-time login) ------------------------------
@@ -468,8 +502,9 @@ namespace News_Back_end.Controllers
             if (dto.NewPassword != dto.ConfirmPassword)
                 return BadRequest("New password and confirmation do not match.");
 
-            var decodedToken = WebUtility.UrlDecode(dto.Token);
-            var resetResult = await _userManager.ResetPasswordAsync(user, decodedToken, dto.NewPassword);
+            // Do NOT URL decode - the token comes already URL-encoded from the frontend
+            // and ASP.NET Identity expects the raw token
+            var resetResult = await _userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
             if (!resetResult.Succeeded)
                 return BadRequest(resetResult.Errors);
 
@@ -477,6 +512,32 @@ namespace News_Back_end.Controllers
             await _userManager.UpdateAsync(user);
 
             return Ok("Password has been reset.");
+        }
+
+        // --------------------- RESET MEMBER PASSWORD (Alias for reset-password) ------------------------------
+        [HttpPost("reset-member-password")]
+        public async Task<IActionResult> ResetMemberPassword(ResetPasswordDTO dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var user = await _userManager.FindByEmailAsync(dto.Email);
+            if (user == null)
+                return NotFound(new { message = "User not found." });
+
+            if (dto.NewPassword != dto.ConfirmPassword)
+                return BadRequest(new { message = "New password and confirmation do not match." });
+
+            // Do NOT URL decode - the token comes already URL-encoded from the frontend
+            // and we need to pass it as-is to ResetPasswordAsync
+            var resetResult = await _userManager.ResetPasswordAsync(user, dto.Token, dto.NewPassword);
+            if (!resetResult.Succeeded)
+                return BadRequest(new { message = "Failed to reset password.", errors = resetResult.Errors });
+
+            user.Lastlogin = DateTime.Now;
+            await _userManager.UpdateAsync(user);
+
+            return Ok(new { message = "Password has been reset successfully. You can now login with your new password." });
         }
 
         // --------------------- ACTIVATE / DEACTIVATE USER ------------------------------
@@ -507,15 +568,19 @@ namespace News_Back_end.Controllers
 
         // Identity handles password hashing and verification
 
-        // --------------------- REGISTER MEMBER (creates Identity user + Member profile) ------------------------------
+        // --------------------- REGISTER MEMBER (Consultant only) ------------------------------
         [HttpPost("register-member")]
-        public async Task<IActionResult> RegisterMember(MemberDTOs dto)
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> RegisterMember(RegisterMemberByConsultantDTO dto)
         {
-            if (dto.Password != dto.ConfirmPassword)
-                return BadRequest("Password and Confirm Password do not match.");
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
 
             if (await _userManager.FindByEmailAsync(dto.Email) != null)
                 return BadRequest("Email is already registered.");
+
+            // Generate temporary password for the member
+            var tempPassword = GenerateTemporaryPassword();
 
             var appUser = new ApplicationUser
             {
@@ -524,20 +589,21 @@ namespace News_Back_end.Controllers
                 Name = dto.ContactPerson,
                 WeChatWorkId = dto.WeChatWorkId,
                 IsActive = true,
-                Lastlogin = DateTime.Now
+                Lastlogin = DateTime.Now,
+                MustChangePassword = true
             };
 
-            var res = await _userManager.CreateAsync(appUser, dto.Password);
+            var res = await _userManager.CreateAsync(appUser, tempPassword);
             if (!res.Succeeded)
                 return BadRequest(res.Errors);
 
-            // assign Member role
+            // Assign Member role
             if (!await _roleManager.RoleExistsAsync("Member"))
                 await _roleManager.CreateAsync(new IdentityRole("Member"));
 
             await _userManager.AddToRoleAsync(appUser, "Member");
 
-            // create member profile
+            // Create member profile
             var member = new Member
             {
                 CompanyName = dto.CompanyName,
@@ -553,7 +619,7 @@ namespace News_Back_end.Controllers
             };
 
             _context.Members.Add(member);
-            await _context.SaveChangesAsync(); // Save first to get member ID
+            await _context.SaveChangesAsync();
 
             // Add industry tag relationship
             if (dto.IndustryTagId > 0)
@@ -566,7 +632,61 @@ namespace News_Back_end.Controllers
                 }
             }
 
-            return Ok("Member registered successfully.");
+            // Send email with temporary password
+            await SendMemberRegistrationEmail(appUser.Email, tempPassword);
+
+            return Ok(new
+            {
+                message = "Member registered successfully. Invitation email has been sent to the member.",
+                memberId = member.MemberId,
+                userId = appUser.Id
+            });
+        }
+
+        // Helper method to generate temporary password
+        private string GenerateTemporaryPassword()
+        {
+            const string validChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%";
+            var random = new Random();
+            var password = new StringBuilder();
+
+            // Ensure at least one uppercase, one lowercase, one digit, one special char
+            password.Append(validChars[random.Next(26, 52)]);  // Uppercase
+            password.Append(validChars[random.Next(0, 26)]);   // Lowercase
+            password.Append(validChars[random.Next(52, 62)]);  // Digit
+            password.Append(validChars[random.Next(62, validChars.Length)]);  // Special
+
+            // Add random characters to reach 12 characters minimum
+            for (int i = 0; i < 8; i++)
+            {
+                password.Append(validChars[random.Next(validChars.Length)]);
+            }
+
+            return password.ToString();
+        }
+
+        // Helper method to send member registration email
+        private async Task SendMemberRegistrationEmail(string email, string tempPassword)
+        {
+            var subject = "Your Account Has Been Created";
+
+            // Generate password reset token for the email link
+            var user = await _userManager.FindByEmailAsync(email);
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebUtility.UrlEncode(token);
+
+            var resetLink = $"{_config["Frontend:ResetPasswordUrl"]}?email={WebUtility.UrlEncode(email)}&token={encodedToken}";
+
+            var html = $@"
+<p>Hello,</p>
+<p>Your account has been created by your Consultant. Please use the following information to access your account:</p>
+<p><strong>Email:</strong> {email}</p>
+<p><strong>Temporary Password:</strong> {tempPassword}</p>
+<p>For security reasons, you must change your password on your first login.</p>
+<p><a href='{resetLink}'>Click here to set your new password</a></p>
+<p>Best regards,<br/>The News Team</p>";
+
+            await _emailService.SendEmailAsync(email, subject, html);
         }
 
         // --------------------- LINK EXISTING MEMBER TO APPLICATIONUSER ------------------------------
@@ -604,7 +724,7 @@ namespace News_Back_end.Controllers
 
                 // Get the member profile
                 var member = await _context.Members
-                    .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+                      .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
 
                 if (member == null)
                     return NotFound(new { message = "Member profile not found" });
@@ -633,7 +753,7 @@ namespace News_Back_end.Controllers
 
                 // Get the member profile
                 var member = await _context.Members
-                    .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
+         .FirstOrDefaultAsync(m => m.ApplicationUserId == userId);
 
                 if (member == null)
                     return NotFound(new { message = "Member profile not found" });
@@ -670,11 +790,11 @@ namespace News_Back_end.Controllers
 
             // First, get the member WITH interests and industry tags loaded
             var memberEntity = await _context.Members
-                .Include(m => m.Interests)
-                .Include(m => m.IndustryTags)
-                .FirstOrDefaultAsync(m => m.ApplicationUserId == user.Id);
+      .Include(m => m.Interests)
+       .Include(m => m.IndustryTags)
+            .FirstOrDefaultAsync(m => m.ApplicationUserId == user.Id);
 
-            // Then, manually project to anonymous object
+            // Then, manually projection to anonymous object
             object member = null;
             if (memberEntity != null)
             {
@@ -691,9 +811,9 @@ namespace News_Back_end.Controllers
                     memberEntity.MembershipType,
                     memberEntity.CreatedAt,
                     memberEntity.NotificationChannels,
-                    memberEntity.NotificationFrequency,        // ADD THIS LINE
-                    memberEntity.NotificationLanguage,         // ADD THIS LINE
-                    memberEntity.ApplyToAllTopics,             // ADD THIS LINE
+                    memberEntity.NotificationFrequency,
+                    memberEntity.NotificationLanguage,
+                    memberEntity.ApplyToAllTopics,
                     Interests = memberEntity.Interests?.Select(i => new { i.InterestTagId, i.NameEN, i.NameZH }).ToList(),
                     IndustryTags = memberEntity.IndustryTags?.Select(i => new { i.IndustryTagId, i.NameEN, i.NameZH }).ToList()
                 };
@@ -711,6 +831,70 @@ namespace News_Back_end.Controllers
                 Roles = roles,
                 Member = member
             });
+        }
+
+        // --------------------- DELETE MEMBER (Consultant only) ------------------------------
+        [HttpDelete("delete-member/{memberId}")]
+        [Authorize(Roles = "Consultant")]
+        public async Task<IActionResult> DeleteMember(int memberId)
+        {
+            try
+            {
+                var member = await _context.Members.FirstOrDefaultAsync(m => m.MemberId == memberId);
+                if (member == null)
+                    return NotFound(new { message = "Member not found." });
+
+                // Get the associated ApplicationUser
+                var appUser = await _userManager.FindByIdAsync(member.ApplicationUserId);
+
+                // Remove member from database
+                _context.Members.Remove(member);
+                await _context.SaveChangesAsync();
+
+                // Delete the associated ApplicationUser if it exists
+                if (appUser != null)
+                {
+                    var deleteResult = await _userManager.DeleteAsync(appUser);
+                    if (!deleteResult.Succeeded)
+                        return BadRequest(new { message = "Member deleted but user account deletion failed.", errors = deleteResult.Errors });
+                }
+
+                return Ok(new { message = "Member and associated user account deleted successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error deleting member: " + ex.Message });
+            }
+        }
+
+        // --------------------- DELETE CONSULTANT (Admin only) ------------------------------
+        [HttpDelete("delete-consultant/{consultantId}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteConsultant(string consultantId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(consultantId))
+                    return BadRequest(new { message = "Consultant id is required." });
+
+                var user = await _userManager.FindByIdAsync(consultantId);
+                if (user == null)
+                    return NotFound(new { message = "Consultant not found." });
+
+                // Ensure target is a Consultant
+                if (!await _userManager.IsInRoleAsync(user, "Consultant"))
+                    return BadRequest(new { message = "The specified user is not a Consultant." });
+
+                var deleteResult = await _userManager.DeleteAsync(user);
+                if (!deleteResult.Succeeded)
+                    return BadRequest(new { message = "Failed to delete consultant.", errors = deleteResult.Errors });
+
+                return Ok(new { message = "Consultant account deleted successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error deleting consultant: " + ex.Message });
+            }
         }
     }
 }
