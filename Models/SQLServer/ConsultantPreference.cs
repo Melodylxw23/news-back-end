@@ -9,6 +9,15 @@ namespace News_Back_end.Models.SQLServer
  }
 
  /// <summary>
+ /// Language preference for insights generation.
+ /// </summary>
+ public enum ConsultantInsightsLanguage
+ {
+ English,
+ Chinese // Simplified Chinese (ÖÐÎÄ)
+ }
+
+ /// <summary>
  /// Stores a consultant's preferences for receiving China insights.
  /// Consultant is an Identity user with Role = Consultant.
  /// </summary>
@@ -37,6 +46,12 @@ namespace News_Back_end.Models.SQLServer
  /// Delivery frequency: Daily (Mon-Fri) or Weekly (Monday).
  /// </summary>
  public ConsultantInsightsFrequency Frequency { get; set; } = ConsultantInsightsFrequency.Daily;
+
+ /// <summary>
+ /// Language preference for insights generation.
+ /// English (default) or Chinese (Simplified Chinese).
+ /// </summary>
+ public ConsultantInsightsLanguage Language { get; set; } = ConsultantInsightsLanguage.English;
 
  /// <summary>
  /// Destination email (defaults to consultant's login email).

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace News_Back_end.Models.SQLServer
 {
@@ -30,6 +31,13 @@ namespace News_Back_end.Models.SQLServer
  Cancelled
  }
 
+    public enum BroadcastLanguage
+    {
+        English,
+        Chinese,
+        Both  // Send in both languages based on member preference
+    }
+
  public class BroadcastMessage
  {
  public int Id { get; set; }
@@ -43,6 +51,14 @@ namespace News_Back_end.Models.SQLServer
  // The main body/content (HTML or plain text)
  public string Body { get; set; } = string.Empty;
 
+   // Translated versions (for multi-language support)
+        public string? TitleZH { get; set; }
+        public string? SubjectZH { get; set; }
+        public string? BodyZH { get; set; }
+
+  // Original language of the broadcast
+        public BroadcastLanguage Language { get; set; } = BroadcastLanguage.English;
+
  // Which channel this broadcast is for
  public BroadcastChannel Channel { get; set; } = BroadcastChannel.Email;
 
@@ -54,7 +70,7 @@ namespace News_Back_end.Models.SQLServer
 
  // Audit fields
         public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.Now;
-        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
+     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.Now;
 
  // Optional scheduling
  public DateTimeOffset? ScheduledSendAt { get; set; }
@@ -64,5 +80,52 @@ namespace News_Back_end.Models.SQLServer
 
  // Many-to-many relationship with PublicationDraft (selected articles)
  public ICollection<PublicationDraft> SelectedArticles { get; set; } = new List<PublicationDraft>();
+
+ // Tag-based targeting (stored as JSON)
+ public string SelectedInterestTagIdsJson { get; set; } = "[]";
+ public string SelectedIndustryTagIdsJson { get; set; } = "[]";
+
+ // Helper properties for easy access to tag IDs - NOT MAPPED to database columns
+ [NotMapped]
+ public List<int> SelectedInterestTagIds
+ {
+  get
+ {
+  try
+  {
+   var json = System.Text.Json.JsonSerializer.Deserialize<List<int>>(SelectedInterestTagIdsJson);
+   return json ?? new List<int>();
+  }
+  catch
+     {
+   return new List<int>();
+ }
+ }
+  set
+  {
+       SelectedInterestTagIdsJson = System.Text.Json.JsonSerializer.Serialize(value ?? new List<int>());
+     }
+ }
+
+ [NotMapped]
+ public List<int> SelectedIndustryTagIds
+ {
+ get
+    {
+       try
+  {
+    var json = System.Text.Json.JsonSerializer.Deserialize<List<int>>(SelectedIndustryTagIdsJson);
+         return json ?? new List<int>();
+   }
+     catch
+   {
+        return new List<int>();
+      }
+   }
+       set
+   {
+   SelectedIndustryTagIdsJson = System.Text.Json.JsonSerializer.Serialize(value ?? new List<int>());
+   }
+  }
  }
 }

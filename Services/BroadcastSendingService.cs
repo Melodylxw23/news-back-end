@@ -274,26 +274,26 @@ var broadcast = await _context.BroadcastMessages
 
         private EmailContentDTO GenerateEmailContent(BroadcastMessage broadcast)
  {
-            var htmlBuilder = new StringBuilder();
+      var htmlBuilder = new StringBuilder();
 
-            htmlBuilder.AppendLine("<!DOCTYPE html>");
+   htmlBuilder.AppendLine("<!DOCTYPE html>");
      htmlBuilder.AppendLine("<html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'></head><body>");
  htmlBuilder.AppendLine("<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>");
 
-        htmlBuilder.AppendLine($"<h1 style='color: #333;'>{broadcast.Title}</h1>");
-  htmlBuilder.AppendLine($"<div style='margin: 20px 0; line-height: 1.6;'>{broadcast.Body}</div>");
+      htmlBuilder.AppendLine($"<h1 style='color: #333;'>{{{{TITLE}}}}</h1>");
+  htmlBuilder.AppendLine($"<div style='margin: 20px 0; line-height: 1.6;'>{{{{BODY}}}}</div>");
 
   if (broadcast.SelectedArticles?.Any() == true)
-            {
+        {
         htmlBuilder.AppendLine("<h2 style='color: #555; margin-top: 30px;'>Featured Articles:</h2>");
-           htmlBuilder.AppendLine("<div style='margin: 20px 0;'>");
+      htmlBuilder.AppendLine("<div style='margin: 20px 0;'>");
 
       int articleIndex = 0;
    foreach (var article in broadcast.SelectedArticles)
      {
          var title = !string.IsNullOrWhiteSpace(article.NewsArticle?.TitleEN)
-             ? article.NewsArticle.TitleEN
-           : article.NewsArticle?.TitleZH ?? "Untitled";
+  ? article.NewsArticle.TitleEN
+      : article.NewsArticle?.TitleZH ?? "Untitled";
 
     htmlBuilder.AppendLine($"<div style='margin-bottom: 15px; padding: 15px; border-left: 3px solid #007bff; background-color: #f8f9fa;' data-article-id='{article.PublicationDraftId}' data-article-index='{articleIndex}'>");
          htmlBuilder.AppendLine($"<h3 style='margin: 0 0 10px 0; color: #333;'><a href='{{{{ARTICLE_LINK_{articleIndex}}}}}' style='color: #007bff; text-decoration: none;'>{title}</a></h3>");
@@ -305,17 +305,17 @@ var broadcast = await _context.BroadcastMessages
 
       // Add a "Read More" button with tracking
    htmlBuilder.AppendLine($"<a href='{{{{ARTICLE_LINK_{articleIndex}}}}}' style='display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; margin-top: 10px;'>Read More</a>");
-     htmlBuilder.AppendLine("</div>");
-     articleIndex++;
+   htmlBuilder.AppendLine("</div>");
+articleIndex++;
      }
 
    htmlBuilder.AppendLine("</div>");
       }
 
      // Footer with unsubscribe link
-        htmlBuilder.AppendLine("<div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;'>");
-            htmlBuilder.AppendLine("<p>This email was sent from your News Service.</p>");
-         htmlBuilder.AppendLine("<p><a href='{{UNSUBSCRIBE_LINK}}' style='color: #666;'>Unsubscribe from these emails</a></p>");
+ htmlBuilder.AppendLine("<div style='margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; font-size: 12px;'>");
+htmlBuilder.AppendLine("<p>This email was sent from your News Service.</p>");
+ htmlBuilder.AppendLine("<p><a href='{{UNSUBSCRIBE_LINK}}' style='color: #666;'>Unsubscribe from these emails</a></p>");
        htmlBuilder.AppendLine("</div>");
 
             htmlBuilder.AppendLine("</div></body></html>");
@@ -323,34 +323,79 @@ var broadcast = await _context.BroadcastMessages
       return new EmailContentDTO
     {
  HtmlBody = htmlBuilder.ToString(),
-           PlainTextBody = $"{broadcast.Title}\n\n{broadcast.Body}"
+ PlainTextBody = $"{{{{TITLE}}}}\n\n{{{{BODY}}}}"
     };
         }
 
         private EmailContentDTO PersonalizeContent(EmailContentDTO baseContent, MemberRecipientDTO recipient, int broadcastId, List<PublicationDraft> articles)
-     {
-          var personalizedHtml = baseContent.HtmlBody;
+  {
+       var broadcast = _context.BroadcastMessages.Find(broadcastId);
+  if (broadcast == null)
+   throw new ArgumentException("Broadcast not found", nameof(broadcastId));
 
-         // Add personalized greeting
-    personalizedHtml = personalizedHtml.Replace(
+  // Determine which language version to use based on member preference
+        var memberPreferredLang = recipient.PreferredLanguage?.ToUpper() ?? "EN";
+   var useChinese = memberPreferredLang == "ZH" || memberPreferredLang == "CHINESE";
+
+            // Select appropriate content based on language preference and broadcast language setting
+         string title, subject, body;
+     
+ if (broadcast.Language == BroadcastLanguage.Both || 
+             (broadcast.Language == BroadcastLanguage.Chinese && useChinese) ||
+                (broadcast.Language == BroadcastLanguage.English && !useChinese))
+  {
+     // Use member's preferred language if available
+     if (useChinese && !string.IsNullOrWhiteSpace(broadcast.BodyZH))
+  {
+     title = broadcast.TitleZH ?? broadcast.Title;
+   subject = broadcast.SubjectZH ?? broadcast.Subject;
+   body = broadcast.BodyZH;
+    _logger.LogDebug("[BroadcastSending] Using Chinese content for member {MemberId}", recipient.MemberId);
+             }
+       else
+    {
+         title = broadcast.Title;
+       subject = broadcast.Subject;
+          body = broadcast.Body;
+    _logger.LogDebug("[BroadcastSending] Using English content for member {MemberId}", recipient.MemberId);
+          }
+   }
+       else
+      {
+    // Fallback to default language if translation not available
+           title = broadcast.Title;
+ subject = broadcast.Subject;
+        body = broadcast.Body;
+  _logger.LogWarning("[BroadcastSending] Translation not available for member {MemberId} preferred language {Lang}, using default", 
+          recipient.MemberId, memberPreferredLang);
+        }
+
+ var personalizedHtml = baseContent.HtmlBody;
+     
+   // Replace content placeholders
+            personalizedHtml = personalizedHtml.Replace("{{TITLE}}", title);
+  personalizedHtml = personalizedHtml.Replace("{{BODY}}", body);
+
+  // Add personalized greeting
+ personalizedHtml = personalizedHtml.Replace(
       "<h1 style='color: #333;'>",
-         $"<p style='margin-bottom: 20px;'>Dear {recipient.ContactPerson},</p><h1 style='color: #333;'>"
-            );
+     $"<p style='margin-bottom: 20px;'>Dear {recipient.ContactPerson},</p><h1 style='color: #333;'>"
+     );
 
         // Replace article link placeholders with tracked URLs
-          for (int i = 0; i < articles.Count; i++)
+for (int i = 0; i < articles.Count; i++)
   {
-         var article = articles[i];
-         
-            // Build the original URL - prefer SourceURL, then frontend article page
-                string originalUrl;
+   var article = articles[i];
+       
+    // Build the original URL - prefer SourceURL, then frontend article page
+    string originalUrl;
       if (!string.IsNullOrWhiteSpace(article.NewsArticle?.SourceURL))
  {
   originalUrl = article.NewsArticle.SourceURL;
-         _logger.LogDebug("[BroadcastSending] Article {ArticleId} using SourceURL: {Url}", article.PublicationDraftId, originalUrl);
+      _logger.LogDebug("[BroadcastSending] Article {ArticleId} using SourceURL: {Url}", article.PublicationDraftId, originalUrl);
      }
-       else
-       {
+     else
+   {
          // Fallback to frontend article view page (must be a full URL for email clients)
           originalUrl = $"{_frontendArticleUrl}/{article.PublicationDraftId}";
          _logger.LogWarning("[BroadcastSending] Article {ArticleId} has no SourceURL, using frontend URL: {Url}", article.PublicationDraftId, originalUrl);
@@ -358,28 +403,28 @@ var broadcast = await _context.BroadcastMessages
        
      // Create tracked URL that redirects through our analytics endpoint
    var trackedUrl = $"{_baseUrl}/api/analytics/track/click/{broadcastId}/{recipient.MemberId}?url={Uri.EscapeDataString(originalUrl)}&linkId=article-{i}&articleId={article.PublicationDraftId}";
-             
+           
   _logger.LogDebug("[BroadcastSending] Article {Index} tracked URL: {TrackedUrl}", i, trackedUrl);
         
 personalizedHtml = personalizedHtml.Replace($"{{{{ARTICLE_LINK_{i}}}}}", trackedUrl);
  }
 
 // Add unsubscribe link
-     var unsubscribeUrl = $"{_baseUrl}/api/members/{recipient.MemberId}/unsubscribe?broadcastId={broadcastId}";
+  var unsubscribeUrl = $"{_baseUrl}/api/members/{recipient.MemberId}/unsubscribe?broadcastId={broadcastId}";
             personalizedHtml = personalizedHtml.Replace("{{UNSUBSCRIBE_LINK}}", unsubscribeUrl);
 
        // Add tracking pixel before closing body tag
         // Note: Many email clients block or proxy tracking pixels. Consider this metric as a minimum, not exact count.
          var trackingPixelUrl = $"{_baseUrl}/api/analytics/track/open/{broadcastId}/{recipient.MemberId}";
-            var trackingPixel = $"<img src=\"{trackingPixelUrl}\" width=\"1\" height=\"1\" style=\"display:none;border:0;\" alt=\"\" />";
-            personalizedHtml = personalizedHtml.Replace("</body>", trackingPixel + "</body>");
-            
-            _logger.LogDebug("[BroadcastSending] Added tracking pixel for member {MemberId}: {PixelUrl}", recipient.MemberId, trackingPixelUrl);
+        var trackingPixel = $"<img src=\"{trackingPixelUrl}\" width=\"1\" height=\"1\" style=\"display:none;border:0;\" alt=\"\" />";
+        personalizedHtml = personalizedHtml.Replace("</body>", trackingPixel + "</body>");
+      
+    _logger.LogDebug("[BroadcastSending] Added tracking pixel for member {MemberId}: {PixelUrl}", recipient.MemberId, trackingPixelUrl);
 
-         return new EmailContentDTO
-         {
+    return new EmailContentDTO
+   {
      HtmlBody = personalizedHtml,
-           PlainTextBody = $"Dear {recipient.ContactPerson},\n\n{baseContent.PlainTextBody}"
+    PlainTextBody = $"Dear {recipient.ContactPerson},\n\n{title}\n\n{body}"
             };
         }
 

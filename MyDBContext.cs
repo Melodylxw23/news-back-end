@@ -39,6 +39,9 @@ namespace News_Back_end
         // Consultant insights send log (idempotency)
         public DbSet<ConsultantInsightsSendLog> ConsultantInsightsSendLogs { get; set; } = null!;
 
+        // Consultant insights history (track previously sent content to prevent repetition)
+        public DbSet<ConsultantInsightsHistory> ConsultantInsightsHistories { get; set; } = null!;
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -227,7 +230,12 @@ namespace News_Back_end
                 .HasConversion<string>()
                 .HasColumnType("nvarchar(20)");
 
-            // ConsultantInsightsSendLog relationship + uniqueness (ConsultantUserId, Period, PeriodDateUtc)
+            modelBuilder.Entity<ConsultantPreference>()
+    .Property(p => p.Language)
+             .HasConversion<string>()
+ .HasColumnType("nvarchar(20)");
+
+       // ConsultantInsightsSendLog relationship + uniqueness (ConsultantUserId, Period, PeriodDateUtc)
             modelBuilder.Entity<ConsultantInsightsSendLog>()
                 .HasOne(l => l.ConsultantUser)
                 .WithMany()
@@ -242,6 +250,22 @@ namespace News_Back_end
             modelBuilder.Entity<ConsultantInsightsSendLog>()
                 .HasIndex(l => new { l.ConsultantUserId, l.Period, l.PeriodDateUtc })
                 .IsUnique();
+
+            // ConsultantInsightsHistory relationship + uniqueness (ConsultantUserId, Period, PeriodDateUtc)
+            modelBuilder.Entity<ConsultantInsightsHistory>()
+      .HasOne(h => h.ConsultantUser)
+        .WithMany()
+           .HasForeignKey(h => h.ConsultantUserId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+    modelBuilder.Entity<ConsultantInsightsHistory>()
+    .Property(h => h.Period)
+       .HasConversion<string>()
+ .HasColumnType("nvarchar(20)");
+
+     modelBuilder.Entity<ConsultantInsightsHistory>()
+                .HasIndex(h => new { h.ConsultantUserId, h.Period, h.PeriodDateUtc })
+         .IsUnique();
         }
 
 

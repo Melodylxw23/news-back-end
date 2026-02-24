@@ -1,0 +1,449 @@
+<!doctype html>
+<html>
+<head>
+ <meta charset="utf-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1" />
+ <title>Broadcast AI Insights - Creation Assistant</title>
+ <style>
+ * { box-sizing: border-box; }
+ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; background: #f5f5f5; }
+ 
+ .container { display: grid; grid-template-columns: 1fr 380px; gap: 24px; }
+ 
+ /* Form Section */
+ .form-section { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+ .form-section h2 { margin: 0 0 20px; font-size: 20px; }
+ 
+ .form-group { margin-bottom: 20px; }
+ .form-group label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; color: #374151; }
+ .form-group input, .form-group textarea { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+ .form-group textarea { min-height: 120px; resize: vertical; }
+ .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+ 
+ .char-count { font-size: 12px; color: #6b7280; text-align: right; margin-top: 4px; }
+ .char-count.warning { color: #f59e0b; }
+ .char-count.error { color: #ef4444; }
+ 
+ /* Insights Panel */
+ .insights-panel { position: sticky; top: 20px; }
+ 
+ .card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+ .card h3 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+ .card h3 .icon { font-size: 18px; }
+ 
+ /* Readiness Meter */
+ .readiness-meter { margin-bottom: 16px; }
+ .readiness-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; }
+ .readiness-fill { height: 100%; transition: width 0.3s, background 0.3s; }
+ .readiness-fill.low { background: #ef4444; }
+ .readiness-fill.medium { background: #f59e0b; }
+ .readiness-fill.high { background: #10b981; }
+ .readiness-label { display: flex; justify-content: space-between; font-size: 13px; margin-top: 6px; }
+ 
+ /* Missing Items */
+ .missing-items { background: #fef3c7; border-radius: 8px; padding: 12px; margin-top: 12px; }
+ .missing-items h4 { margin: 0 0 8px; font-size: 13px; color: #92400e; }
+ .missing-items ul { margin: 0; padding-left: 18px; font-size: 13px; color: #78350f; }
+ 
+ /* Quick Stats */
+ .quick-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+ .stat-item { background: #f9fafb; padding: 12px; border-radius: 8px; }
+ .stat-value { font-size: 20px; font-weight: 700; color: #111827; }
+ .stat-label { font-size: 12px; color: #6b7280; margin-top: 2px; }
+ .stat-tip { font-size: 11px; color: #3b82f6; margin-top: 4px; }
+ 
+ /* AI Insights */
+ .ai-insights { border-left: 3px solid #8b5cf6; }
+ .ai-insights h3 { color: #7c3aed; }
+ 
+ .insight-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+ .insight-row:last-child { border-bottom: none; }
+ .insight-label { color: #6b7280; font-size: 13px; }
+ .insight-value { font-weight: 600; font-size: 13px; }
+ .insight-value.good { color: #10b981; }
+ .insight-value.warning { color: #f59e0b; }
+ .insight-value.bad { color: #ef4444; }
+ 
+ /* Recommendations */
+ .recommendations { max-height: 300px; overflow-y: auto; }
+ .rec-item { padding: 12px; border-radius: 8px; margin-bottom: 8px; background: #f9fafb; }
+ .rec-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+ .rec-priority { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; }
+ .rec-priority.high { background: #fef2f2; color: #dc2626; }
+ .rec-priority.medium { background: #fffbeb; color: #d97706; }
+ .rec-priority.low { background: #f0fdf4; color: #16a34a; }
+ .rec-title { font-weight: 600; font-size: 14px; }
+ .rec-why { font-size: 13px; color: #6b7280; margin-bottom: 8px; }
+ .rec-actions { font-size: 12px; }
+ .rec-actions li { color: #374151; margin-bottom: 4px; }
+ 
+ /* Subject Suggestions */
+ .suggestions { margin-top: 12px; }
+ .suggestion-item { padding: 10px 12px; background: #eff6ff; border-radius: 8px; margin-bottom: 8px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+ .suggestion-item:hover { background: #dbeafe; }
+ 
+ /* Quick Wins */
+ .quick-wins { background: #f0fdf4; padding: 12px; border-radius: 8px; }
+ .quick-wins h4 { margin: 0 0 8px; font-size: 13px; color: #166534; }
+ .quick-wins ul { margin: 0; padding-left: 18px; font-size: 13px; color: #15803d; }
+ 
+ /* Warnings */
+ .warnings { background: #fef2f2; padding: 12px; border-radius: 8px; margin-top: 12px; }
+ .warnings h4 { margin: 0 0 8px; font-size: 13px; color: #991b1b; }
+ .warnings ul { margin: 0; padding-left: 18px; font-size: 13px; color: #dc2626; }
+ 
+ /* Buttons */
+ .btn { padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 14px; transition: all 0.2s; }
+ .btn-primary { background: #3b82f6; color: #fff; }
+ .btn-primary:hover { background: #2563eb; }
+ .btn-secondary { background: #f3f4f6; color: #374151; }
+ .btn-secondary:hover { background: #e5e7eb; }
+ .btn-ai { background: linear-gradient(135deg, #8b5cf6, #6366f1); color: #fff; }
+ .btn-ai:hover { opacity: 0.9; }
+ 
+ .loading { opacity: 0.6; pointer-events: none; }
+ .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px; }
+ @keyframes spin { to { transform: rotate(360deg); } }
+ </style>
+</head>
+<body>
+ <h1>?? Broadcast Creation Assistant</h1>
+ 
+ <div class="container">
+ <!-- Form Section -->
+ <div class="form-section">
+ <h2>Create Broadcast</h2>
+ 
+ <div class="form-group">
+ <label for="subject">Subject Line</label>
+ <input type="text" id="subject" placeholder="Enter a compelling subject line..." oninput="onSubjectChange(this)" />
+ <div class="char-count" id="subject-count">0 characters</div>
+ </div>
+ 
+ <div class="form-group">
+ <label for="body">Email Body</label>
+ <textarea id="body" placeholder="Write your email content here..." oninput="onBodyChange(this)"></textarea>
+ <div class="char-count" id="body-count">0 words</div>
+ </div>
+ 
+ <div class="form-group">
+ <label>Selected Articles</label>
+ <div id="selected-articles" style="color: #6b7280; font-size: 14px;">No articles selected</div>
+ </div>
+ 
+ <div style="display: flex; gap: 12px; margin-top: 24px;">
+ <button class="btn btn-ai" onclick="getAiInsights()" id="ai-btn">
+ ? Get AI Insights
+ </button>
+ <button class="btn btn-secondary" onclick="refreshQuickInsights()">
+ ?? Refresh Preview
+ </button>
+ </div>
+ </div>
+ 
+ <!-- Insights Panel -->
+ <div class="insights-panel">
+ <!-- Readiness Card -->
+ <div class="card" id="readiness-card">
+ <h3><span class="icon">??</span> Broadcast Readiness</h3>
+ <div class="readiness-meter">
+ <div class="readiness-bar">
+ <div class="readiness-fill" id="readiness-fill" style="width: 0%"></div>
+ </div>
+ <div class="readiness-label">
+ <span id="readiness-status">Not started</span>
+ <span id="readiness-percent">0%</span>
+ </div>
+ </div>
+ <div id="missing-items"></div>
+ </div>
+ 
+ <!-- Quick Stats -->
+ <div class="card">
+ <h3><span class="icon">??</span> Quick Stats</h3>
+ <div class="quick-stats">
+ <div class="stat-item">
+ <div class="stat-value" id="recipient-count">0</div>
+ <div class="stat-label">Recipients</div>
+ </div>
+ <div class="stat-item">
+ <div class="stat-value" id="article-count">0</div>
+ <div class="stat-label">Articles</div>
+ <div class="stat-tip" id="article-tip"></div>
+ </div>
+ </div>
+ <div style="margin-top: 12px; font-size: 13px; color: #6b7280;" id="audience-desc">
+ Target: All members
+ </div>
+ <div style="margin-top: 8px; font-size: 13px;" id="send-time-suggestion">
+ </div>
+ </div>
+ 
+ <!-- AI Insights Card -->
+ <div class="card ai-insights" id="ai-card" style="display: none;">
+ <h3><span class="icon">??</span> AI Insights</h3>
+ 
+ <div id="ai-summary" style="font-size: 14px; color: #374151; margin-bottom: 12px;"></div>
+ 
+ <div id="ai-insights-grid">
+ <!-- Populated by JS -->
+ </div>
+ 
+ <div id="subject-suggestions" style="display: none;">
+ <h4 style="font-size: 13px; margin: 16px 0 8px;">?? Subject Line Suggestions</h4>
+ <div id="suggestions-list"></div>
+ </div>
+ 
+ <div id="quick-wins-container" style="display: none;"></div>
+ <div id="warnings-container" style="display: none;"></div>
+ </div>
+ 
+ <!-- Recommendations Card -->
+ <div class="card" id="recommendations-card" style="display: none;">
+ <h3><span class="icon">??</span> Recommendations</h3>
+ <div class="recommendations" id="recommendations-list">
+ <!-- Populated by JS -->
+ </div>
+ </div>
+ </div>
+ </div>
+
+<script>
+// Debounce helper
+function debounce(fn, delay) {
+ let timer;
+ return function(...args) {
+ clearTimeout(timer);
+ timer = setTimeout(() => fn.apply(this, args), delay);
+ };
+}
+
+// Track form state
+const formState = {
+ subject: '',
+ body: '',
+ selectedArticleIds: [],
+ selectedInterestTagIds: [],
+ selectedIndustryTagIds: []
+};
+
+function onSubjectChange(input) {
+ formState.subject = input.value;
+ const len = input.value.length;
+ const countEl = document.getElementById('subject-count');
+ countEl.textContent = `${len} characters`;
+ countEl.className = 'char-count' + (len > 60 ? ' warning' : len < 30 && len > 0 ? ' warning' : '');
+ debouncedQuickInsights();
+}
+
+function onBodyChange(textarea) {
+ formState.body = textarea.value;
+ const words = textarea.value.trim().split(/\s+/).filter(w => w).length;
+ const countEl = document.getElementById('body-count');
+ countEl.textContent = `${words} words`;
+ countEl.className = 'char-count' + (words > 500 ? ' warning' : '');
+ debouncedQuickInsights();
+}
+
+const debouncedQuickInsights = debounce(refreshQuickInsights, 500);
+
+async function refreshQuickInsights() {
+ try {
+ const res = await fetch('/api/analytics/broadcast/quick-insights', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ draftSubject: formState.subject,
+ draftBody: formState.body,
+ selectedArticleIds: formState.selectedArticleIds,
+ selectedInterestTagIds: formState.selectedInterestTagIds,
+ selectedIndustryTagIds: formState.selectedIndustryTagIds
+ })
+ });
+ 
+ const data = await res.json();
+ updateQuickInsightsUI(data);
+ } catch (e) {
+ console.error('Failed to fetch quick insights:', e);
+ }
+}
+
+function updateQuickInsightsUI(data) {
+ // Readiness
+ const fillEl = document.getElementById('readiness-fill');
+ const percentEl = document.getElementById('readiness-percent');
+ const statusEl = document.getElementById('readiness-status');
+ 
+ fillEl.style.width = data.readinessPercent + '%';
+ fillEl.className = 'readiness-fill ' + (data.readinessPercent >= 80 ? 'high' : data.readinessPercent >= 50 ? 'medium' : 'low');
+ percentEl.textContent = data.readinessPercent + '%';
+ statusEl.textContent = data.readinessPercent >= 80 ? 'Ready to send' : data.readinessPercent >= 50 ? 'Needs work' : 'Not ready';
+ 
+ // Missing items
+ const missingEl = document.getElementById('missing-items');
+ if (data.missingItems && data.missingItems.length > 0) {
+ missingEl.innerHTML = `
+ <div class="missing-items">
+ <h4>?? Missing Items</h4>
+ <ul>${data.missingItems.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+ </div>
+ `;
+ } else {
+ missingEl.innerHTML = '';
+ }
+ 
+ // Stats
+ document.getElementById('recipient-count').textContent = data.estimatedRecipients.toLocaleString();
+ document.getElementById('article-count').textContent = data.selectedArticleCount;
+ document.getElementById('article-tip').textContent = data.articleSelectionTip || '';
+ document.getElementById('audience-desc').textContent = data.audienceDescription || 'Target: All members';
+ 
+ // Send time
+ const timeEl = document.getElementById('send-time-suggestion');
+ if (data.suggestedSendTime) {
+ const optimal = data.isPlannedTimeOptimal ? '?' : '??';
+ timeEl.innerHTML = `${optimal} Best time: <strong>${escapeHtml(data.suggestedSendTime)}</strong>`;
+ }
+}
+
+async function getAiInsights() {
+ const btn = document.getElementById('ai-btn');
+ btn.innerHTML = '<span class="spinner"></span>Analyzing...';
+ btn.classList.add('loading');
+ 
+ try {
+ const res = await fetch('/api/analytics/broadcast/ai-insights', {
+ method: 'POST',
+ headers: { 'Content-Type': 'application/json' },
+ body: JSON.stringify({
+ draftSubject: formState.subject,
+ draftBody: formState.body,
+ selectedArticleIds: formState.selectedArticleIds,
+ selectedInterestTagIds: formState.selectedInterestTagIds,
+ selectedIndustryTagIds: formState.selectedIndustryTagIds,
+ includeSubjectSuggestions: true,
+ includeArticleSuggestions: true,
+ includeTimingAnalysis: true,
+ includeContentFeedback: true
+ })
+ });
+ 
+ const data = await res.json();
+ updateAiInsightsUI(data);
+ } catch (e) {
+ console.error('Failed to fetch AI insights:', e);
+ alert('Failed to get AI insights. Please try again.');
+ } finally {
+ btn.innerHTML = '? Get AI Insights';
+ btn.classList.remove('loading');
+ }
+}
+
+function updateAiInsightsUI(data) {
+ const aiCard = document.getElementById('ai-card');
+ aiCard.style.display = 'block';
+ 
+ // Summary
+ document.getElementById('ai-summary').innerHTML = data.summary ? 
+ `<strong>${data.overallScore || ''}</strong> ${escapeHtml(data.summary)}` : '';
+ 
+ // Insights grid
+ const insights = data.insights || {};
+ const insightsHtml = `
+ <div class="insight-row">
+ <span class="insight-label">Predicted Open Rate</span>
+ <span class="insight-value ${getScoreClass(insights.predictedOpenRate, 30, 20)}">${insights.predictedOpenRate ? insights.predictedOpenRate.toFixed(1) + '%' : '！'}</span>
+ </div>
+ <div class="insight-row">
+ <span class="insight-label">Engagement Score</span>
+ <span class="insight-value ${insights.engagementScore === 'High' ? 'good' : insights.engagementScore === 'Low' ? 'bad' : 'warning'}">${insights.engagementScore || '！'}</span>
+ </div>
+ <div class="insight-row">
+ <span class="insight-label">Best Send Time</span>
+ <span class="insight-value">${insights.bestSendTimeLocal || insights.bestSendTime || '！'}</span>
+ </div>
+ <div class="insight-row">
+ <span class="insight-label">Subject Length</span>
+ <span class="insight-value">${insights.optimalSubjectLength || '！'}</span>
+ </div>
+ `;
+ document.getElementById('ai-insights-grid').innerHTML = insightsHtml;
+ 
+ // Subject suggestions
+ const suggestions = insights.subjectLineSuggestions || [];
+ if (suggestions.length > 0) {
+ const suggestionsEl = document.getElementById('subject-suggestions');
+ suggestionsEl.style.display = 'block';
+ document.getElementById('suggestions-list').innerHTML = suggestions.map(s => 
+ `<div class="suggestion-item" onclick="useSubject(this)">${escapeHtml(s)}</div>`
+ ).join('');
+ }
+ 
+ // Quick wins
+ if (data.quickWins && data.quickWins.length > 0) {
+ const container = document.getElementById('quick-wins-container');
+ container.style.display = 'block';
+ container.innerHTML = `
+ <div class="quick-wins" style="margin-top: 12px;">
+ <h4>? Quick Wins</h4>
+ <ul>${data.quickWins.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
+ </div>
+ `;
+ }
+ 
+ // Warnings
+ if (data.warnings && data.warnings.length > 0) {
+ const container = document.getElementById('warnings-container');
+ container.style.display = 'block';
+ container.innerHTML = `
+ <div class="warnings">
+ <h4>?? Warnings</h4>
+ <ul>${data.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
+ </div>
+ `;
+ }
+ 
+ // Recommendations
+ const recs = data.recommendations || [];
+ if (recs.length > 0) {
+ const recsCard = document.getElementById('recommendations-card');
+ recsCard.style.display = 'block';
+ document.getElementById('recommendations-list').innerHTML = recs.map(r => `
+ <div class="rec-item">
+ <div class="rec-header">
+ <span class="rec-priority ${(r.priority || 'medium').toLowerCase()}">${r.priority || 'Medium'}</span>
+ <span class="rec-title">${escapeHtml(r.title || '')}</span>
+ </div>
+ <div class="rec-why">${escapeHtml(r.why || '')}</div>
+ ${r.actions && r.actions.length ? `
+ <div class="rec-actions">
+ <ul>${r.actions.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>
+ </div>
+ ` : ''}
+ </div>
+ `).join('');
+ }
+}
+
+function useSubject(el) {
+ const subject = el.textContent;
+ document.getElementById('subject').value = subject;
+ formState.subject = subject;
+ onSubjectChange(document.getElementById('subject'));
+}
+
+function getScoreClass(val, good, bad) {
+ if (val == null) return '';
+ return val >= good ? 'good' : val >= bad ? 'warning' : 'bad';
+}
+
+function escapeHtml(s) {
+ if (!s) return '';
+ return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Initial load
+refreshQuickInsights();
+</script>
+</body>
+</html>

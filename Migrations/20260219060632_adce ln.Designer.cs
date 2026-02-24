@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260219060632_adce ln")]
+    partial class adceln
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -377,7 +380,7 @@ namespace News_Back_end.Migrations
                     b.HasIndex("BroadcastMessageId")
                         .IsUnique();
 
-                    b.ToTable("BroadcastAnalyticsSummaries", (string)null);
+                    b.ToTable("BroadcastAnalyticsSummaries");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastDelivery", b =>
@@ -476,7 +479,7 @@ namespace News_Back_end.Migrations
                     b.HasIndex("BroadcastMessageId", "MemberId")
                         .IsUnique();
 
-                    b.ToTable("BroadcastDeliveries", (string)null);
+                    b.ToTable("BroadcastDeliveries");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastLinkClick", b =>
@@ -525,7 +528,7 @@ namespace News_Back_end.Migrations
 
                     b.HasIndex("PublicationDraftId");
 
-                    b.ToTable("BroadcastLinkClicks", (string)null);
+                    b.ToTable("BroadcastLinkClicks");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastMessage", b =>
@@ -573,62 +576,7 @@ namespace News_Back_end.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("BroadcastMessages", (string)null);
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsHistory", b =>
-                {
-                    b.Property<int>("ConsultantInsightsHistoryId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("ConsultantInsightsHistoryId"));
-
-                    b.Property<string>("ConsultantUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("ExecutiveSummary")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<DateTimeOffset>("GeneratedAtUtc")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("KeyDevelopmentsJson")
-                        .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("OpportunitiesJson")
-                        .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Period")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<DateTime>("PeriodDateUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("RecommendedActionsJson")
-                        .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("WatchoutsJson")
-                        .IsRequired()
-                        .HasMaxLength(5000)
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("ConsultantInsightsHistoryId");
-
-                    b.HasIndex("ConsultantUserId", "Period", "PeriodDateUtc")
-                        .IsUnique();
-
-                    b.ToTable("ConsultantInsightsHistories", (string)null);
+                    b.ToTable("BroadcastMessages");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsSendLog", b =>
@@ -670,7 +618,7 @@ namespace News_Back_end.Migrations
                     b.HasIndex("ConsultantUserId", "Period", "PeriodDateUtc")
                         .IsUnique();
 
-                    b.ToTable("ConsultantInsightsSendLogs", (string)null);
+                    b.ToTable("ConsultantInsightsSendLogs");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantPreference", b =>
@@ -698,9 +646,8 @@ namespace News_Back_end.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("Language")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(20)");
+                    b.Property<int>("Language")
+                        .HasColumnType("int");
 
                     b.Property<int>("PreferredTimeMinutesUtc")
                         .HasColumnType("int");
@@ -717,7 +664,7 @@ namespace News_Back_end.Migrations
                     b.HasIndex("ConsultantUserId")
                         .IsUnique();
 
-                    b.ToTable("ConsultantPreferences", (string)null);
+                    b.ToTable("ConsultantPreferences");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.DailyBroadcastMetric", b =>
@@ -766,7 +713,7 @@ namespace News_Back_end.Migrations
                     b.HasIndex("MetricDate")
                         .IsUnique();
 
-                    b.ToTable("DailyBroadcastMetrics", (string)null);
+                    b.ToTable("DailyBroadcastMetrics");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchMetric", b =>
@@ -797,7 +744,7 @@ namespace News_Back_end.Migrations
 
                     b.HasKey("FetchMetricId");
 
-                    b.ToTable("FetchMetrics", (string)null);
+                    b.ToTable("FetchMetrics");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.IndustryTag", b =>
@@ -826,7 +773,7 @@ namespace News_Back_end.Migrations
 
                     b.HasKey("IndustryTagId");
 
-                    b.ToTable("IndustryTags", (string)null);
+                    b.ToTable("IndustryTags");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.InterestTag", b =>
@@ -855,7 +802,7 @@ namespace News_Back_end.Migrations
 
                     b.HasKey("InterestTagId");
 
-                    b.ToTable("InterestTags", (string)null);
+                    b.ToTable("InterestTags");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>
@@ -920,7 +867,7 @@ namespace News_Back_end.Migrations
                         .IsUnique()
                         .HasFilter("[ApplicationUserId] IS NOT NULL");
 
-                    b.ToTable("Members", (string)null);
+                    b.ToTable("Members");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.MemberEngagementProfile", b =>
@@ -989,7 +936,7 @@ namespace News_Back_end.Migrations
                     b.HasIndex("MemberId")
                         .IsUnique();
 
-                    b.ToTable("MemberEngagementProfiles", (string)null);
+                    b.ToTable("MemberEngagementProfiles");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.NewsArticle", b =>
@@ -1096,7 +1043,7 @@ namespace News_Back_end.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("NewsArticles", (string)null);
+                    b.ToTable("NewsArticles");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.PublicationDraft", b =>
@@ -1159,7 +1106,7 @@ namespace News_Back_end.Migrations
 
                     b.HasIndex("NewsArticleId");
 
-                    b.ToTable("PublicationDrafts", (string)null);
+                    b.ToTable("PublicationDrafts");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Source", b =>
@@ -1210,7 +1157,7 @@ namespace News_Back_end.Migrations
 
                     b.HasKey("SourceId");
 
-                    b.ToTable("Sources", (string)null);
+                    b.ToTable("Sources");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.SourceDescriptionSetting", b =>
@@ -1279,7 +1226,7 @@ namespace News_Back_end.Migrations
 
                     b.HasIndex("SourceId");
 
-                    b.ToTable("SourceDescriptionSettings", (string)null);
+                    b.ToTable("SourceDescriptionSettings");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TopicPerformanceMetric", b =>
@@ -1331,7 +1278,7 @@ namespace News_Back_end.Migrations
 
                     b.HasIndex("MetricDate", "InterestTagId", "IndustryTagId");
 
-                    b.ToTable("TopicPerformanceMetrics", (string)null);
+                    b.ToTable("TopicPerformanceMetrics");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.TranslationAudit", b =>
@@ -1361,7 +1308,7 @@ namespace News_Back_end.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("TranslationAudits", (string)null);
+                    b.ToTable("TranslationAudits");
                 });
 
             modelBuilder.Entity("BroadcastMessagePublicationDraft", b =>
@@ -1521,17 +1468,6 @@ namespace News_Back_end.Migrations
                     b.Navigation("BroadcastDelivery");
 
                     b.Navigation("PublicationDraft");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsHistory", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ConsultantUser")
-                        .WithMany()
-                        .HasForeignKey("ConsultantUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ConsultantUser");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.ConsultantInsightsSendLog", b =>

@@ -269,7 +269,20 @@ if (!string.IsNullOrWhiteSpace(openAIBroadcastAnalyticsKey))
     });
 }
 
-// Consultant insights email (dummy for now)
+// OpenAI Consultant Insights Service - generates contextual market insights based on territories/industries
+var openAIConsultantInsightsKey = builder.Configuration["OpenAIBroadcast:ApiKey"];
+if (!string.IsNullOrWhiteSpace(openAIConsultantInsightsKey))
+{
+    var openAIConsultantInsightsBase = builder.Configuration["OpenAIBroadcast:BaseUrl"] ?? "https://api.openai.com/";
+    builder.Services.AddHttpClient<IConsultantInsightsAiService, OpenAIConsultantInsightsService>(c =>
+    {
+        c.BaseAddress = new Uri(openAIConsultantInsightsBase);
+        c.DefaultRequestHeaders.Add("Authorization", $"Bearer {openAIConsultantInsightsKey}");
+        c.Timeout = TimeSpan.FromSeconds(60);
+    });
+}
+
+// Consultant insights email service
 builder.Services.AddScoped<IConsultantInsightsEmailService, ConsultantInsightsEmailService>();
 builder.Services.AddHostedService<ConsultantInsightsHostedService>();
 
@@ -285,6 +298,9 @@ if (!string.IsNullOrWhiteSpace(openAIContentCreationKey))
 {
     // legacy content creation registration removed - Summarization handled by ITranslationService.SummarizeAsync
 }
+
+// Add in-memory cache for AI result caching
+builder.Services.AddMemoryCache();
 
 builder.Services.AddAuthorization();
 
@@ -305,41 +321,86 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<MyDBContext>();
     try
     {
-        db.Database.Migrate();
+        // Check if database exists and has tables before attempting migration
+        var conn = db.Database.GetDbConnection();
+ Console.WriteLine($"[DB] Provider: {db.Database.ProviderName}, DataSource: {conn.DataSource}, Database: {conn.Database}");
+        
+    // Check if migrations are needed
+    var pendingMigrations = db.Database.GetPendingMigrations().ToList();
+      if (pendingMigrations.Any())
+        {
+ Console.WriteLine($"[DB] Found {pendingMigrations.Count} pending migrations: {string.Join(", ", pendingMigrations)}");
+ 
+            try
+          {
+                db.Database.Migrate();
+    Console.WriteLine("[DB] Migrations applied successfully");
+            }
+  catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Message.Contains("There is already an object named"))
+   {
+        Console.WriteLine($"[DB] Migration conflict detected: {ex.Message}");
+           Console.WriteLine("[DB] This typically means the database schema is out of sync with migrations.");
+     Console.WriteLine("[DB] Attempting to resolve by marking all migrations as applied...");
+    
+              // Get all migrations from the assembly
+   var allMigrations = db.Database.GetMigrations().ToList();
+                Console.WriteLine($"[DB] Found {allMigrations.Count} total migrations in assembly");
+             
+   // Check which migrations are already applied
+   var appliedMigrations = db.Database.GetAppliedMigrations().ToList();
+             Console.WriteLine($"[DB] {appliedMigrations.Count} migrations already applied to database");
+ 
+            // If we have a conflict but the database seems to have been created, 
+     // we may need to reset the migration history
+    throw new Exception(
+     "Database migration conflict detected. This usually happens when:\n" +
+       "1. The database was created manually or from a different migration state\n" +
+             "2. Migration history is corrupted or out of sync\n\n" +
+        "To resolve this issue, you can:\n" +
+  "1. Delete the database and let migrations recreate it from scratch\n" +
+    "2. Or run: dotnet ef database drop --force\n" +
+       "3. Then restart the application to recreate the database with proper migrations\n\n" +
+        $"Original error: {ex.Message}"
+        );
+    }
+     }
+        else
+        {
+     Console.WriteLine("[DB] No pending migrations found");
+        }
 
         // Explicit runtime checks to catch LocalDB/migration problems early
-        var conn = db.Database.GetDbConnection();
-        Console.WriteLine($"[DB] Provider: {db.Database.ProviderName}, DataSource: {conn.DataSource}, Database: {conn.Database}");
         try
         {
-            conn.Open();
+         conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Sources'";
-            var cntObj = cmd.ExecuteScalar();
-            var count = cntObj == null ? 0 : Convert.ToInt32(cntObj);
-            if (count == 0)
-            {
-                throw new Exception("Required table 'Sources' does not exist in the target database. Ensure migrations were applied to the correct database/instance.");
+         var cntObj = cmd.ExecuteScalar();
+     var count = cntObj == null ? 0 : Convert.ToInt32(cntObj);
+   if (count == 0)
+   {
+    throw new Exception("Required table 'Sources' does not exist in the target database. Ensure migrations were applied to the correct database/instance.");
             }
+      Console.WriteLine("[DB] Database schema validation passed");
         }
-        finally
+      finally
         {
-            try { conn.Close(); } catch { }
-        }
+      try { conn.Close(); } catch { }
+     }
     }
-    catch (Exception ex)
-    {
-        // Log full exception and fail startup so the problem is visible and addressed
+  catch (Exception ex)
+  {
+    // Log full exception and fail startup so the problem is visible and addressed
         Console.WriteLine($"Database migrate/check failed: {ex}");
-        throw;
+  throw;
     }
 
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var roles = new[] { "Admin", "Consultant", "Member" };
+ var roles = new[] { "Admin", "Consultant", "Member" };
     foreach (var r in roles)
     {
         if (!await roleManager.RoleExistsAsync(r))
-            await roleManager.CreateAsync(new IdentityRole(r));
+       await roleManager.CreateAsync(new IdentityRole(r));
     }
 }
 
