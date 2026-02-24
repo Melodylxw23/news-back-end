@@ -26,25 +26,19 @@ namespace News_Back_end
         public DbSet<PublicationDraft> PublicationDrafts { get; set; } = null!;
         public DbSet<BroadcastDelivery> BroadcastDeliveries { get; set; } = null!;
 
-        // Analytics entities
-        public DbSet<BroadcastLinkClick> BroadcastLinkClicks { get; set; } = null!;
-        public DbSet<BroadcastAnalyticsSummary> BroadcastAnalyticsSummaries { get; set; } = null!;
-        public DbSet<TopicPerformanceMetric> TopicPerformanceMetrics { get; set; } = null!;
-        public DbSet<MemberEngagementProfile> MemberEngagementProfiles { get; set; } = null!;
-        public DbSet<DailyBroadcastMetric> DailyBroadcastMetrics { get; set; } = null!;
-
-        // Consultant insights preferences
-        public DbSet<ConsultantPreference> ConsultantPreferences { get; set; } = null!;
-
-        // Consultant insights send log (idempotency)
-        public DbSet<ConsultantInsightsSendLog> ConsultantInsightsSendLogs { get; set; } = null!;
-
-        // Consultant insights history (track previously sent content to prevent repetition)
-        public DbSet<ConsultantInsightsHistory> ConsultantInsightsHistories { get; set; } = null!;
-
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<AutoFetchSetting>()
+                .HasIndex(x => x.ApplicationUserId)
+                .IsUnique();
+
+            modelBuilder.Entity<AutoFetchSetting>()
+                .HasOne(x => x.ApplicationUser)
+                .WithMany()
+                .HasForeignKey(x => x.ApplicationUserId)
+                .OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<Member>()
                 .HasMany(m => m.IndustryTags)

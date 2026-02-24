@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using News_Back_end;
 
@@ -11,9 +12,11 @@ using News_Back_end;
 namespace News_Back_end.Migrations
 {
     [DbContext(typeof(MyDBContext))]
-    partial class MyDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260218103519_AddAutoFetchToggling")]
+    partial class AddAutoFetchToggling
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -267,6 +270,9 @@ namespace News_Back_end.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("WeChatWorkId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
@@ -278,6 +284,35 @@ namespace News_Back_end.Migrations
                         .HasFilter("[NormalizedUserName] IS NOT NULL");
 
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("News_Back_end.Models.SQLServer.AutoFetchSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ApplicationUserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("IntervalSeconds")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApplicationUserId")
+                        .IsUnique();
+
+                    b.ToTable("AutoFetchSettings");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.BroadcastMessage", b =>
@@ -357,34 +392,6 @@ namespace News_Back_end.Migrations
                     b.HasKey("FetchMetricId");
 
                     b.ToTable("FetchMetrics");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchedArticleUrl", b =>
-                {
-                    b.Property<int>("FetchedArticleUrlId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("FetchedArticleUrlId"));
-
-                    b.Property<string>("ApplicationUserId")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<DateTime>("FetchedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("SourceURL")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.HasKey("FetchedArticleUrlId");
-
-                    b.HasIndex("ApplicationUserId", "SourceURL")
-                        .IsUnique();
-
-                    b.ToTable("FetchedArticleUrls");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.IndustryTag", b =>
@@ -501,6 +508,9 @@ namespace News_Back_end.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("WeChatWorkId")
+                        .HasColumnType("nvarchar(max)");
+
                     b.HasKey("MemberId");
 
                     b.HasIndex("ApplicationUserId")
@@ -529,9 +539,6 @@ namespace News_Back_end.Migrations
 
                     b.Property<int?>("DescriptionSettingId")
                         .HasColumnType("int");
-
-                    b.Property<DateTime?>("FetchedAt")
-                        .HasColumnType("datetime2");
 
                     b.Property<string>("FullContentEN")
                         .HasColumnType("nvarchar(max)");
@@ -760,7 +767,7 @@ namespace News_Back_end.Migrations
                     b.Property<bool>("IncludeOriginalChinese")
                         .HasColumnType("bit");
 
-                    b.Property<int?>("MaxArticlesPerFetch")
+                    b.Property<int>("MaxArticlesPerFetch")
                         .HasColumnType("int");
 
                     b.Property<int>("MinArticleLength")
@@ -938,36 +945,6 @@ namespace News_Back_end.Migrations
                         .IsRequired();
 
                     b.Navigation("ApplicationUser");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchAttempt", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.ApplicationUser", "ApplicationUser")
-                        .WithMany()
-                        .HasForeignKey("ApplicationUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("ApplicationUser");
-                });
-
-            modelBuilder.Entity("News_Back_end.Models.SQLServer.FetchAttemptArticle", b =>
-                {
-                    b.HasOne("News_Back_end.Models.SQLServer.FetchAttempt", "FetchAttempt")
-                        .WithMany("Articles")
-                        .HasForeignKey("FetchAttemptId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("News_Back_end.Models.SQLServer.NewsArticle", "NewsArticle")
-                        .WithMany()
-                        .HasForeignKey("NewsArticleId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("FetchAttempt");
-
-                    b.Navigation("NewsArticle");
                 });
 
             modelBuilder.Entity("News_Back_end.Models.SQLServer.Member", b =>

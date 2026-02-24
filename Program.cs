@@ -190,9 +190,6 @@ builder.Services.AddScoped<UnifiedCrawlerService>();
 // Register ArticleProcessor for processing fetched articles
 builder.Services.AddScoped<ArticleProcessor>();
 
-// Hosted background crawler
-builder.Services.AddHostedService<NewsCrawlerBackgroundService>();
-
 // OpenAI translator (optional) - configure via appsettings or env
 var openAIApiKey = builder.Configuration["OpenAI:ApiKey"];
 var openAIBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
@@ -242,6 +239,19 @@ if (!string.IsNullOrWhiteSpace(openAIBroadcastKey))
         c.Timeout = TimeSpan.FromSeconds(30);
     });
 }
+
+// Register OpenAIChatClient so controllers can inject it
+var openAIChatKey = builder.Configuration["OpenAI:ApiKey"] ?? builder.Configuration["OpenAIRecommendation:ApiKey"];
+var openAIChatBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com/";
+builder.Services.AddHttpClient<OpenAIChatClient>(c =>
+{
+    c.BaseAddress = new Uri(openAIChatBase);
+    c.Timeout = TimeSpan.FromSeconds(120);
+    if (!string.IsNullOrWhiteSpace(openAIChatKey))
+    {
+        c.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", openAIChatKey);
+    }
+});
 
 // Register PublicationService and ScheduledPublishHostedService
 builder.Services.AddScoped<IPublicationService, PublicationService>();
