@@ -29,4 +29,9 @@ BEGIN
     ALTER TABLE [BroadcastMessages] ADD [SelectedIndustryTagIdsJson] nvarchar(max) NOT NULL CONSTRAINT DF_BroadcastMessages_SelectedIndustryTagIdsJson DEFAULT '[]';
 END;
 
-PRINT 'Columns added successfully';
+-- Fix existing data: convert integer Language values to string enum names
+UPDATE [BroadcastMessages] SET [Language] = 'English' WHERE [Language] = '0';
+UPDATE [BroadcastMessages] SET [Language] = 'Chinese' WHERE [Language] = '1';
+UPDATE [BroadcastMessages] SET [Language] = 'Both' WHERE [Language] = '2';
+
+PRINT 'Columns added and data fixed successfully';

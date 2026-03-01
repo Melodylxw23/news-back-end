@@ -7,171 +7,196 @@ namespace News_Back_end.Services
 {
     // Dedicated AI generation service using OpenAI Chat Completions.
     // Supports English and Chinese language generation for broadcasts.
- public class OpenAIBroadcastService : IAiBroadcastService
+    public class OpenAIBroadcastService : IAiBroadcastService
     {
-    private readonly HttpClient _http;
-   private readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        private readonly HttpClient _http;
+        private readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
-public OpenAIBroadcastService(HttpClient http)
-        {
+        public OpenAIBroadcastService(HttpClient http)
+  {
             _http = http;
         }
 
         public async Task<string> GenerateAsync(string prompt, string language = "en")
-  {
-   var systemInstruction = GetSystemInstruction(language);
+        {
+         var systemInstruction = GetSystemInstruction(language);
 
-       var payload = new
-      {
-     model = "gpt-4o-mini",
-          messages = new[] {
+     var payload = new
+     {
+    model = "gpt-4o-mini",
+messages = new[] {
       new { role = "system", content = systemInstruction },
-  new { role = "user", content = prompt }
-    },
-     temperature = 0.6,
-       max_tokens = 2000,
-     response_format = new { type = "json_object" }
+            new { role = "user", content = prompt }
+       },
+  temperature = 0.7,
+    max_tokens = 2000,
+         response_format = new { type = "json_object" }
             };
 
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-      using var resp = await _http.PostAsync("v1/chat/completions", content);
-    var respBody = await resp.Content.ReadAsStringAsync();
-   if (!resp.IsSuccessStatusCode)
- {
-         Console.WriteLine($"OpenAI generation error: {(int)resp.StatusCode} {resp.ReasonPhrase}: {respBody}");
-                throw new HttpRequestException($"OpenAI returned {(int)resp.StatusCode}: {respBody}");
+         using var resp = await _http.PostAsync("v1/chat/completions", content);
+            var respBody = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+     {
+           Console.WriteLine($"OpenAI generation error: {(int)resp.StatusCode} {resp.ReasonPhrase}: {respBody}");
+       throw new HttpRequestException($"OpenAI returned {(int)resp.StatusCode}: {respBody}");
       }
-    try
-         {
-          using var stream = await resp.Content.ReadAsStreamAsync();
-                var doc = await JsonSerializer.DeserializeAsync<JsonElement>(stream, _jsonOptions);
-        if (doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
-            {
-var first = choices[0];
-  if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var contentEl))
-          {
-        return contentEl.GetString() ?? string.Empty;
-         }
-       }
-             return string.Empty;
-            }
-  catch (JsonException ex)
+       try
       {
-     Console.WriteLine($"Failed to parse OpenAI generation response: {ex.Message}. Body: {respBody}");
-     throw;
+                using var stream = await resp.Content.ReadAsStreamAsync();
+      var doc = await JsonSerializer.DeserializeAsync<JsonElement>(stream, _jsonOptions);
+    if (doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
+        {
+          var first = choices[0];
+ if (first.TryGetProperty("message", out var message) && message.TryGetProperty("content", out var contentEl))
+        {
+          return contentEl.GetString() ?? string.Empty;
+     }
             }
+        return string.Empty;
+          }
+        catch (JsonException ex)
+            {
+                Console.WriteLine($"Failed to parse OpenAI generation response: {ex.Message}. Body: {respBody}");
+   throw;
+    }
         }
 
-        /// <summary>
-        /// Get the system instruction based on the requested language.
-        /// Supports English (en) and Chinese (zh).
-        /// </summary>
         private static string GetSystemInstruction(string language)
-        {
- var isChineseLanguage = language.ToLower() == "zh" || 
- language.ToLower() == "chinese" || 
-         language.ToLower() == "zh-cn" ||
-          language.ToLower() == "zh-tw";
+ {
+            var isChineseLanguage = language.ToLower() == "zh" || 
+    language.ToLower() == "chinese" || 
+     language.ToLower() == "zh-cn" ||
+       language.ToLower() == "zh-tw";
 
          if (isChineseLanguage)
             {
      return GetChineseSystemInstruction();
-            }
+       }
  
-    return GetEnglishSystemInstruction();
-     }
-
-      /// <summary>
-        /// English system instruction for broadcast generation
- /// </summary>
-        private static string GetEnglishSystemInstruction()
-        {
-    return @"You are an expert broadcast content writer specializing in professional business communications.
-Your task is to generate broadcast content that is engaging, professional, and suitable for email or notification delivery.
-
-**Output Requirements:**
-You must return ONLY valid JSON with exactly these three keys: title, subject, body.
-
-**Field Guidelines:**
-1. **title**: A concise, attention-grabbing headline (maximum 8-12 words)
-   - Should be clear and descriptive
-   - Avoid clickbait or misleading titles
-   - Use action words when appropriate
-
-2. **subject**: An engaging email subject line (maximum 15-20 words)
-   - Should entice the reader to open the message
-   - Include key information or benefit
-   - Can use appropriate emoji sparingly for emphasis
-
-3. **body**: The main broadcast content (minimum 150 words, prefer 200-300 words)
-   - Well-structured with clear paragraphs
-   - Professional but accessible tone
-   - Include relevant details, context, and call-to-action where appropriate
-   - Use bullet points or numbered lists for key information when helpful
-   - End with a clear next step or call-to-action
-
-**Tone and Style:**
-- Professional yet engaging
-- Clear and concise language
-- Avoid jargon unless audience-appropriate
-- Use active voice
-- Be informative and action-oriented
-
-**Example Output Structure:**
-{
-  ""title"": ""Quarterly Market Update: Key Insights for Q1 2025"",
-  ""subject"": ""?? Q1 2025 Market Trends You Need to Know"",
-  ""body"": ""Dear valued partners,\n\nWe are pleased to share our quarterly market update...""
-}
-
-Return ONLY the JSON object. Do not include any additional text, markdown formatting, or explanations.";
+       return GetEnglishSystemInstruction();
         }
 
-        /// <summary>
-        /// Chinese (Simplified) system instruction for broadcast generation
-        /// </summary>
-        private static string GetChineseSystemInstruction()
-    {
-    return @"您是一位专业的广播内容撰写专家，专注于专业的商业通讯。
-您的任务是生成引人入胜、专业且适合通过电子邮件或通知发送的广播内容。
+        private static string GetEnglishSystemInstruction()
+        {
+         return @"You are an expert newsletter writer creating engaging email broadcasts that invite readers to explore curated content.
 
-**输出要求：**
-您必须仅返回有效的JSON格式，包含以下三个键：title（标题）、subject（主题）、body（正文）。
+**Your Primary Goal:**
+Write a compelling newsletter introduction that discusses THEMES and TOPICS, NOT individual article summaries. The articles will be displayed separately below your content.
 
-**字段指南：**
-1. **title（标题）**：简洁、吸引人的标题（最多8-12个词）
-   - 应清晰且具有描述性
-   - 避免标题党或误导性标题
-   - 适当使用行动词汇
+**Output Requirements:**
+Return ONLY valid JSON with exactly three keys: title, subject, body.
 
-2. **subject（主题）**：引人注目的电子邮件主题行（最多15-20个词）
-   - 应吸引读者打开消息
- - 包含关键信息或价值点
-   - 可适当使用表情符号以增强效果
+**Field Guidelines:**
 
-3. **body（正文）**：广播主要内容（最少150字，建议200-300字）
-   - 结构清晰，段落分明
-   - 专业但易于理解的语气
-   - 包含相关细节、背景和适当的行动号召
-   - 必要时使用项目符号或编号列表呈现关键信息
-   - 以明确的下一步行动或号召结束
+1. **title**: Newsletter headline (5-8 words)
+   - Capture the essence of the topics covered
+   - Example: ""This Week in Tech & Innovation""
 
-**语气和风格：**
-- 专业且引人入胜
-- 语言清晰简洁
-- 除非适合受众，否则避免使用行业术语
-- 使用主动语态
-- 内容要有信息量且具有行动导向
+2. **subject**: Email subject line (8-12 words)
+   - Create curiosity to open the email
+   - Use power words: ""discover"", ""trending"", ""inside"", ""essential""
+   - Can include one emoji
+   - Example: ""?? The Trends Shaping Your Industry This Week""
 
-**输出示例结构：**
+3. **body**: Newsletter introduction (150-250 words) - CRITICAL:
+   
+   **Opening (2-3 sentences):**
+   - Warm, brief greeting
+   - Set the stage for what's inside
+   
+   **Topic Discussion (main content):**
+   - Discuss the THEMES and TRENDS in the industry/topics
+   - Talk about why these topics matter right now
+   - Create excitement about current developments
+   - DO NOT describe individual articles - they appear separately
+
+   **Invitation to Explore (closing):**
+ - Invite readers to check out the curated articles below
+   - Example: ""Dive into our hand-picked articles below to stay ahead!""
+   - Keep it brief and action-oriented
+
+**Tone:**
+- Warm and conversational
+- Enthusiastic but professional
+- Forward-looking and insightful
+- Create anticipation for the content below
+
+**DO NOT:**
+- Summarize individual articles (they're shown separately)
+- Use formal letter format (""Dear Team"", signatures)
+- Include placeholder names like ""[Your Name]""
+- Write generic filler content
+
+**Example Output:**
 {
-  ""title"": ""2025年第一季度市场更新：关键洞察"",
-  ""subject"": ""?? 2025年Q1市场趋势速览"",
-  ""body"": ""尊敬的合作伙伴，\n\n我们很高兴与您分享本季度的市场更新...""
+  ""title"": ""Innovation & Market Trends"",
+  ""subject"": ""?? What's Driving Change This Week"",
+  ""body"": ""Great to have you back!\n\nThis week, we're seeing exciting movements across technology and business. AI continues to reshape how companies operate, while sustainability initiatives are gaining serious momentum in the corporate world. The intersection of these trends is creating opportunities that savvy professionals can't afford to ignore.\n\nWhat makes this moment particularly interesting is how rapidly these changes are affecting traditional business models. Companies that embrace these shifts are positioning themselves for significant advantages.\n\nWe've curated some excellent reads that dive deeper into these developments. Check out the articles below to stay informed and ahead of the curve!""
 }
 
-仅返回JSON对象。不要包含任何额外的文字、markdown格式或解释。
-所有内容必须使用简体中文撰写。";
-   }
+Return ONLY the JSON object.";
+  }
+
+  private static string GetChineseSystemInstruction()
+        {
+      return @"您是一位专业的新闻简报撰写专家，负责创建引人入胜的电子邮件广播，邀请读者探索精选内容。
+
+**您的主要目标：**
+撰写一份引人注目的新闻简报介绍，讨论主题和趋势，而不是单独的文章摘要。文章将单独显示在您的内容下方。
+
+**输出要求：**
+仅返回有效的JSON格式，包含三个键：title（标题）、subject（主题）、body（正文）。
+
+**字段指南：**
+
+1. **title（标题）**：新闻简报标题（5-8个词）
+   - 捕捉所涵盖主题的精髓
+   - 示例：""本周科技与创新动态""
+
+2. **subject（主题）**：电子邮件主题行（8-12个词）
+   - 创造打开邮件的好奇心
+   - 使用有力的词汇：""发现""、""热门""、""独家""、""必读""
+   - 可以包含一个表情符号
+   - 示例：""?? 本周塑造您行业的趋势""
+
+3. **body（正文）**：新闻简报介绍（150-250字）- 关键要求：
+   
+   **开场（2-3句）：**
+   - 温暖、简短的问候
+   - 为内容铺垫
+   
+   **主题讨论（主要内容）：**
+   - 讨论行业/话题中的主题和趋势
+   - 谈论这些话题为何此刻重要
+   - 对当前发展创造兴奋感
+   - 不要描述单独的文章 - 它们单独显示
+
+   **邀请探索（结尾）：**
+   - 邀请读者查看下方精选文章
+   - 示例：""深入了解下方精选文章，保持领先！""
+   - 保持简短和行动导向
+
+**语气：**
+- 温暖而对话式
+- 热情但专业
+- 前瞻性和有洞察力
+- 为下方内容创造期待
+
+**不要：**
+- 总结单独的文章（它们单独显示）
+- 使用正式信函格式（""亲爱的团队""、签名）
+- 包含占位符名称如""[您的姓名]""
+- 写通用的填充内容
+
+**示例输出：**
+{
+  ""title"": ""创新与市场趋势"",
+  ""subject"": ""?? 本周推动变革的力量"",
+  ""body"": ""很高兴您回来！\n\n本周，我们看到科技和商业领域令人兴奋的动态。人工智能继续重塑企业运营方式，而可持续发展举措在企业界正获得强劲势头。这些趋势的交汇正在创造精明专业人士不容错过的机遇。\n\n让这一时刻特别有趣的是，这些变化正在多么迅速地影响传统商业模式。拥抱这些转变的公司正在为自己创造显著优势。\n\n我们精选了一些深入探讨这些发展的优秀文章。查看下方文章，保持信息灵通，走在前沿！""
+}
+
+仅返回JSON对象。所有内容必须使用简体中文撰写。";
+        }
     }
 }

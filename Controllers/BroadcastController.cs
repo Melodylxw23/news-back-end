@@ -443,155 +443,204 @@ Title = existing.Title,
         [HttpPost("generate")]
         public async Task<IActionResult> Generate([FromBody] BroadcastGenerateRequestDTO req)
         {
-            if (string.IsNullOrWhiteSpace(req.Prompt)) 
-         return BadRequest("Prompt is required.");
+        if (string.IsNullOrWhiteSpace(req.Prompt)) 
+          return BadRequest("Prompt is required.");
 
-         if (_aiBroadcast == null)
+ if (_aiBroadcast == null)
             {
-            return StatusCode(503, new { message = "AI generator not configured. Set OpenAIBroadcast:ApiKey in configuration." });
-            }
-
-            // Determine language for generation
-    var language = req.Language?.ToLower() ?? "en";
-          var isChineseLanguage = language == "zh" || language == "chinese" || language == "zh-cn" || language == "zh-tw";
-
-var promptBuilder = new System.Text.StringBuilder();
-            promptBuilder.AppendLine(req.Prompt.Trim());
-    
-   if (req.Channel.HasValue) 
-                promptBuilder.AppendLine($"Channel: {req.Channel.Value}");
-        
-  if (req.TargetAudience != BroadcastAudience.All) 
-  promptBuilder.AppendLine($"TargetAudience: {req.TargetAudience}");
-
-  // Add language-specific instructions
-            if (isChineseLanguage)
-    {
-          promptBuilder.AppendLine();
-       promptBuilder.AppendLine("重要：返回JSON格式，包含以下键：title（标题）、subject（主题）、body（正文）。");
-           promptBuilder.AppendLine("- title（标题）：保持在8个词以内");
-          promptBuilder.AppendLine("- subject（主题）：保持在12个词以内");
-      promptBuilder.AppendLine("- body（正文）：必须是至少150字的详细消息。这是将发送给用户的主要内容。");
-       promptBuilder.AppendLine("确保正文内容全面且信息丰富。所有内容必须使用简体中文撰写。");
-         }
-            else
- {
-        promptBuilder.AppendLine();
-  promptBuilder.AppendLine("IMPORTANT: Return JSON with keys: title, subject, body.");
-    promptBuilder.AppendLine("- title: Keep title <=8 words");
-      promptBuilder.AppendLine("- subject: Keep subject <=12 words");
-    promptBuilder.AppendLine("- body: MUST be a detailed message of at least 150 words. This is the main content that will be sent to users.");
-                promptBuilder.AppendLine("Ensure the body is comprehensive and informative.");
+        return StatusCode(503, new { message = "AI generator not configured. Set OpenAIBroadcast:ApiKey in configuration." });
      }
 
-  try
+            // Determine language for generation
+   var language = req.Language?.ToLower() ?? "en";
+        var isChineseLanguage = language == "zh" || language == "chinese" || language == "zh-cn" || language == "zh-tw";
+
+      var promptBuilder = new System.Text.StringBuilder();
+    
+          // Add the user's prompt/instructions
+            promptBuilder.AppendLine(req.Prompt.Trim());
+ promptBuilder.AppendLine();
+
+            // Fetch selected articles and extract topic/theme information
+   if (req.SelectedArticleIds?.Any() == true)
          {
+      var selectedArticles = await _db.PublicationDrafts
+            .AsNoTracking()
+            .Where(p => req.SelectedArticleIds.Contains(p.PublicationDraftId) && p.IsPublished)
+        .Include(p => p.NewsArticle)
+               .Include(p => p.IndustryTag)
+     .Include(p => p.InterestTags)
+         .ToListAsync();
+
+                if (selectedArticles.Any())
+        {
+          // Extract unique topics and industries from articles
+        var industries = selectedArticles
+       .Where(a => a.IndustryTag != null)
+            .Select(a => isChineseLanguage && !string.IsNullOrWhiteSpace(a.IndustryTag!.NameZH) 
+     ? a.IndustryTag.NameZH 
+       : a.IndustryTag!.NameEN)
+  .Distinct()
+          .ToList();
+
+               var topics = selectedArticles
+         .SelectMany(a => a.InterestTags ?? Enumerable.Empty<InterestTag>())
+    .Select(t => isChineseLanguage && !string.IsNullOrWhiteSpace(t.NameZH) ? t.NameZH : t.NameEN)
+      .Distinct()
+      .ToList();
+
+    promptBuilder.AppendLine("=== NEWSLETTER CONTEXT ===");
+          promptBuilder.AppendLine($"This newsletter includes {selectedArticles.Count} curated articles.");
+      promptBuilder.AppendLine();
+ 
+        if (industries.Any())
+          {
+  promptBuilder.AppendLine($"Industries covered: {string.Join(", ", industries)}");
+       }
+     
+                if (topics.Any())
+      {
+           promptBuilder.AppendLine($"Key topics: {string.Join(", ", topics)}");
+       }
+   
+       promptBuilder.AppendLine();
+        promptBuilder.AppendLine("=== INSTRUCTIONS ===");
+  promptBuilder.AppendLine("- Write a newsletter intro that discusses the THEMES and TOPICS above");
+      promptBuilder.AppendLine("- DO NOT summarize individual articles - they will be attached separately");
+    promptBuilder.AppendLine("- Create excitement about the topics and trends covered");
+        promptBuilder.AppendLine("- Invite readers to explore the attached articles");
+          promptBuilder.AppendLine("- Keep the tone engaging and professional");
+       promptBuilder.AppendLine("- End with a call-to-action encouraging them to dive into the articles below");
+         }
+            }
+         else
+       {
+   promptBuilder.AppendLine();
+ promptBuilder.AppendLine("Note: No specific articles were provided. Create a general newsletter announcement based on the prompt above.");
+         }
+
+            if (req.Channel.HasValue) 
+    promptBuilder.AppendLine($"Channel: {req.Channel.Value}");
+      
+            if (req.TargetAudience != BroadcastAudience.All) 
+    promptBuilder.AppendLine($"TargetAudience: {req.TargetAudience}");
+
+            // Add language-specific output instructions
+            if (isChineseLanguage)
+   {
+         promptBuilder.AppendLine();
+                promptBuilder.AppendLine("重要：返回JSON格式，包含以下键：title（标题）、subject（主题）、body（正文）。");
+                promptBuilder.AppendLine("- title：简洁的标题（8个词以内）");
+              promptBuilder.AppendLine("- subject：吸引人的邮件主题（12个词以内）");
+  promptBuilder.AppendLine("- body：讨论主题和趋势的正文（150-250字），邀请读者查看下方的精选文章");
+ promptBuilder.AppendLine("所有内容必须使用简体中文撰写。");
+            }
+            else
+  {
+       promptBuilder.AppendLine();
+   promptBuilder.AppendLine("IMPORTANT: Return JSON with keys: title, subject, body.");
+                promptBuilder.AppendLine("- title: Concise newsletter title (8 words max)");
+      promptBuilder.AppendLine("- subject: Engaging email subject line (12 words max)");
+       promptBuilder.AppendLine("- body: Discuss the themes and trends (150-250 words), invite readers to check out the featured articles below");
+            }
+
+            try
+        {
           var gen = await _aiBroadcast.GenerateAsync(promptBuilder.ToString(), language);
 
-  string title = string.Empty, subject = string.Empty, body = string.Empty;
+    string title = string.Empty, subject = string.Empty, body = string.Empty;
 
-                // Try to extract JSON object if the model wrapped it in text
-                var jsonCandidate = ExtractJsonObject(gen);
-     var toParse = !string.IsNullOrWhiteSpace(jsonCandidate) ? jsonCandidate : gen;
+    // Try to extract JSON object if the model wrapped it in text
+      var jsonCandidate = ExtractJsonObject(gen);
+ var toParse = !string.IsNullOrWhiteSpace(jsonCandidate) ? jsonCandidate : gen;
 
-    try
-            {
-  var doc = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(toParse);
-     if (doc.ValueKind == System.Text.Json.JsonValueKind.Object)
-       {
+       try
+        {
+         var doc = System.Text.Json.JsonSerializer.Deserialize<System.Text.Json.JsonElement>(toParse);
+   if (doc.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
           if (doc.TryGetProperty("title", out var t)) title = t.GetString() ?? string.Empty;
-        if (doc.TryGetProperty("subject", out var s)) subject = s.GetString() ?? string.Empty;
-   if (doc.TryGetProperty("body", out var b)) body = b.GetString() ?? string.Empty;
-           }
-  }
-      catch (System.Text.Json.JsonException ex)
-  {
-          // Log the parsing error for debugging
-     System.Diagnostics.Debug.WriteLine($"JSON parsing failed: {ex.Message}. Raw response: {gen}");
+             if (doc.TryGetProperty("subject", out var s)) subject = s.GetString() ?? string.Empty;
+ if (doc.TryGetProperty("body", out var b)) body = b.GetString() ?? string.Empty;
+     }
+    }
+  catch (System.Text.Json.JsonException ex)
+     {
+      System.Diagnostics.Debug.WriteLine($"JSON parsing failed: {ex.Message}. Raw response: {gen}");
 
-            // Fallback: try line-by-line parsing
- var lines = gen?.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
-    if (lines.Length > 0) title = lines[0].Trim();
+        var lines = gen?.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
+         if (lines.Length > 0) title = lines[0].Trim();
         if (lines.Length > 1) subject = lines[1].Trim();
-        if (lines.Length > 2) body = string.Join("\n", lines.Skip(2)).Trim();
-       }
+     if (lines.Length > 2) body = string.Join("\n", lines.Skip(2)).Trim();
+                }
 
-     // Additional fallback: if body is still empty, try to extract from a different format
-       if (string.IsNullOrWhiteSpace(body) && !string.IsNullOrWhiteSpace(gen))
-    {
-        // Check if the response contains body content that wasn't parsed
-                    var lowerGen = gen.ToLower();
-           if (lowerGen.Contains("body") && lowerGen.Contains(":"))
-  {
-       // Try to find body content after "body:"
-        var bodyIndex = lowerGen.IndexOf("body");
-         if (bodyIndex >= 0)
-    {
-     var afterBody = gen.Substring(bodyIndex);
-             var colonIndex = afterBody.IndexOf(':');
-      if (colonIndex >= 0 && colonIndex + 1 < afterBody.Length)
-    {
-     var bodyContent = afterBody.Substring(colonIndex + 1).Trim();
-         // Remove potential ending quotes or braces
-          bodyContent = bodyContent.Trim('"', '}', ']', ',').Trim();
-     if (!string.IsNullOrWhiteSpace(bodyContent))
-    {
-    body = bodyContent;
- }
-   }
-      }
-          }
-      }
-
-       if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(subject) && string.IsNullOrWhiteSpace(body))
+ if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(subject) && string.IsNullOrWhiteSpace(body))
       {
-      return StatusCode(502, new { message = "AI did not produce usable output." });
-      }
+   return StatusCode(502, new { message = "AI did not produce usable output." });
+}
 
-           var model = new BroadcastMessage
+    var model = new BroadcastMessage
     {
-           Title = string.IsNullOrWhiteSpace(title) ? req.Prompt.Truncate(80) : title,
-               Subject = string.IsNullOrWhiteSpace(subject) ? ("Update: " + req.Prompt.Truncate(120)) : subject,
-  Body = string.IsNullOrWhiteSpace(body) ? req.Prompt : body,
-       Channel = req.Channel ?? BroadcastChannel.Email,
-             TargetAudience = req.TargetAudience,
-            Language = isChineseLanguage ? BroadcastLanguage.Chinese : BroadcastLanguage.English,
-     Status = BroadcastStatus.Draft,
-      CreatedAt = DateTimeOffset.Now,
-       UpdatedAt = DateTimeOffset.Now,
-  CreatedById = User?.Identity?.Name
-    };
+        Title = string.IsNullOrWhiteSpace(title) ? req.Prompt.Truncate(80) : title,
+                  Subject = string.IsNullOrWhiteSpace(subject) ? ("Newsletter: " + req.Prompt.Truncate(100)) : subject,
+   Body = string.IsNullOrWhiteSpace(body) ? req.Prompt : body,
+     Channel = req.Channel ?? BroadcastChannel.Email,
+        TargetAudience = req.TargetAudience,
+       Language = isChineseLanguage ? BroadcastLanguage.Chinese : BroadcastLanguage.English,
+   Status = BroadcastStatus.Draft,
+          CreatedAt = DateTimeOffset.Now,
+  UpdatedAt = DateTimeOffset.Now,
+        CreatedById = User?.Identity?.Name
+         };
 
-              _db.BroadcastMessages.Add(model);
-         await _db.SaveChangesAsync();
+        _db.BroadcastMessages.Add(model);
+                await _db.SaveChangesAsync();
+
+   // Add selected articles to the broadcast if provided
+          if (req.SelectedArticleIds?.Any() == true)
+       {
+              var selectedArticles = await _db.PublicationDrafts
+          .Where(p => req.SelectedArticleIds.Contains(p.PublicationDraftId) && p.IsPublished)
+          .ToListAsync();
+
+  foreach (var article in selectedArticles)
+      {
+      model.SelectedArticles.Add(article);
+ }
+
+     await _db.SaveChangesAsync();
+  }
 
                 return CreatedAtAction(nameof(Get), new { id = model.Id }, new BroadcastListItemDTO
-          {
-     Id = model.Id,
-     Title = model.Title,
-      Subject = model.Subject,
-         Channel = model.Channel,
-           TargetAudience = model.TargetAudience,
-            Status = model.Status,
-          CreatedAt = model.CreatedAt,
-             UpdatedAt = model.UpdatedAt,
-       ScheduledSendAt = model.ScheduledSendAt,
-                    CreatedById = model.CreatedById,
-        SelectedArticlesCount = 0,
-          SelectedArticleIds = new List<int>(),
-    HasChineseTranslation = false
-   });
-         }
-    catch (Exception ex)
+{
+       Id = model.Id,
+          Title = model.Title,
+   Subject = model.Subject,
+      Channel = model.Channel,
+TargetAudience = model.TargetAudience,
+         Language = model.Language,
+          Status = model.Status,
+ CreatedAt = model.CreatedAt,
+    UpdatedAt = model.UpdatedAt,
+     ScheduledSendAt = model.ScheduledSendAt,
+           CreatedById = model.CreatedById,
+  SelectedArticlesCount = model.SelectedArticles.Count,
+        SelectedArticleIds = model.SelectedArticles.Select(a => a.PublicationDraftId).ToList(),
+            SelectedInterestTagIds = model.SelectedInterestTagIds,
+          SelectedIndustryTagIds = model.SelectedIndustryTagIds,
+     HasChineseTranslation = false
+    });
+  }
+            catch (Exception ex)
     {
-      return StatusCode(500, new { message = "Failed to generate broadcast", error = ex.Message });
-        }
+         return StatusCode(500, new { message = "Failed to generate broadcast", error = ex.Message });
+       }
         }
 
-        /// <summary>
+     /// <summary>
         /// Get audience counts for different targeting options
         /// </summary>
-        /// <returns>Audience counts broken down by different criteria</returns>
+    /// <returns>Audience counts broken down by different criteria</returns>
     [HttpGet("audience-counts")]
         public async Task<IActionResult> GetAudienceCounts()
         {

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using News_Back_end.Models.SQLServer;
+using System.Text;
 
 namespace News_Back_end.Services
 {
@@ -407,7 +408,7 @@ namespace News_Back_end.Services
  }
 
  /// <summary>
- /// Builds email HTML from AI-generated insights.
+ /// Builds email HTML from AI-generated insights with source references.
  /// </summary>
  private static string BuildAiEmailHtml(
   string? name,
@@ -425,6 +426,11 @@ namespace News_Back_end.Services
 <head>
  <meta charset='utf-8' />
  <meta name='viewport' content='width=device-width, initial-scale=1' />
+ <style>
+  .source-link {{ color: #0066cc; font-size: 11px; text-decoration: none; }}
+  .source-link:hover {{ text-decoration: underline; }}
+  .source-citation {{ font-size: 11px; color: #666; margin-top: 4px; font-style: italic; }}
+ </style>
 </head>
 <body style='font-family: Arial, sans-serif; color:#222; line-height:1.55; background:#ffffff;'>
  <div style='max-width:720px; margin:0 auto; padding:18px;'>
@@ -449,26 +455,26 @@ namespace News_Back_end.Services
 
  <h3 style='margin:18px 0 8px 0;'>Key developments</h3>
  <ol style='margin:0 0 18px 0; padding-left:20px;'>
- {string.Join("", aiResponse.KeyDevelopments.Select(i => $"<li style='margin:0 0 10px 0;'>{Html(i)}</li>"))}
+ {string.Join("", aiResponse.KeyDevelopmentsWithSources.Select(i => BuildInsightItemHtml(i)))}
  </ol>
 
  <h3 style='margin:18px 0 8px 0;'>Opportunities & positioning</h3>
  <ul style='margin:0 0 18px 0; padding-left:20px;'>
- {string.Join("", aiResponse.Opportunities.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
+ {string.Join("", aiResponse.OpportunitiesWithSources.Select(i => BuildInsightItemHtml(i)))}
  </ul>
 
  <h3 style='margin:18px 0 8px 0;'>Watch-outs</h3>
  <ul style='margin:0 0 18px 0; padding-left:20px; color:#333;'>
- {string.Join("", aiResponse.Watchouts.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
+ {string.Join("", aiResponse.WatchoutsWithSources.Select(i => BuildInsightItemHtml(i)))}
  </ul>
 
  <h3 style='margin:18px 0 8px 0;'>Recommended actions (next 7 days)</h3>
  <ul style='margin:0 0 18px 0; padding-left:20px;'>
- {string.Join("", aiResponse.RecommendedActions.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
+ {string.Join("", aiResponse.RecommendedActionsWithSources.Select(i => BuildInsightItemHtml(i)))}
  </ul>
 
  <div style='margin-top:18px; padding:12px 14px; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px;'>
- <div style='font-size:12px; color:#7c2d12;'><strong>Note:</strong> This briefing is generated from market research and your saved preferences for {Html(territoryLine)} and {Html(industryLine)}.</div>
+ <div style='font-size:12px; color:#7c2d12;'><strong>Note:</strong> This briefing is generated from market research and your saved preferences for {Html(territoryLine)} and {Html(industryLine)}. Sources are provided for reference and verification.</div>
  </div>
 
  <hr style='border:none; border-top:1px solid #eee; margin:22px 0;' />
@@ -476,6 +482,46 @@ namespace News_Back_end.Services
  </div>
 </body>
 </html>";
+ }
+
+ /// <summary>
+ /// Builds HTML for a single insight item with source reference.
+ /// </summary>
+ private static string BuildInsightItemHtml(InsightItem item)
+ {
+ var hasSource = !string.IsNullOrWhiteSpace(item.SourceName);
+ 
+ if (!hasSource)
+ {
+  return $"<li style='margin:0 0 10px 0;'>{Html(item.Text)}</li>";
+ }
+
+ var sourceHtml = new StringBuilder();
+ sourceHtml.Append("<div style='font-size:11px; color:#666; margin-top:4px; font-style:italic;'>");
+ sourceHtml.Append("?? Source: ");
+ 
+ // Only create a link if we have a valid, non-empty URL that starts with http
+ if (!string.IsNullOrWhiteSpace(item.SourceUrl) && item.SourceUrl.StartsWith("http"))
+ {
+  sourceHtml.Append($"<a href='{Html(item.SourceUrl)}' style='color:#0066cc; text-decoration:none;' target='_blank'>{Html(item.SourceName)}</a>");
+ }
+ else
+ {
+  // Display source name as plain text (no broken link)
+  sourceHtml.Append(Html(item.SourceName));
+ }
+
+ if (!string.IsNullOrWhiteSpace(item.SourceDate))
+ {
+  sourceHtml.Append($" ({Html(item.SourceDate)})");
+ }
+
+ sourceHtml.Append("</div>");
+
+ return $@"<li style='margin:0 0 14px 0;'>
+  <div>{Html(item.Text)}</div>
+  {sourceHtml}
+ </li>";
  }
 
  private static string BuildDummyEmailHtml(string? name, List<string> territories, List<string> industries, DateTimeOffset nowUtc)
@@ -581,17 +627,6 @@ namespace News_Back_end.Services
 </html>";
  }
 
- private static string Html(string value) => System.Net.WebUtility.HtmlEncode(value);
-
- private static string BuildHeadline(string category, string territory, string industry)
- {
- // Simple deterministic headline that still reads like a briefing.
- // Avoids explicit dummy markers.
- var t = string.IsNullOrWhiteSpace(territory) ? "China" : territory;
- var i = string.IsNullOrWhiteSpace(industry) ? "industry" : industry;
- return $"{category}: {t} ¡ª {i} implementation signals";
- }
-
  /// <summary>
  /// Builds email HTML from consultant-edited insights content.
  /// </summary>
@@ -600,17 +635,17 @@ namespace News_Back_end.Services
  List<string> territories,
        List<string> industries,
 string executiveSummary,
-            List<string> keyDevelopments,
+   List<string> keyDevelopments,
        List<string> opportunities,
           List<string> watchouts,
         List<string> recommendedActions,
   DateTimeOffset nowUtc)
         {
-       var displayName = string.IsNullOrWhiteSpace(name) ? "Consultant" : name;
-            var territoryLine = string.Join(", ", territories.Any() ? territories : new List<string> { "China (national)" });
+   var displayName = string.IsNullOrWhiteSpace(name) ? "Consultant" : name;
+    var territoryLine = string.Join(", ", territories.Any() ? territories : new List<string> { "China (national)" });
      var industryLine = string.Join(", ", industries.Any() ? industries : new List<string> { "Cross-sector" });
 
-            return $@"<!DOCTYPE html>
+     return $@"<!DOCTYPE html>
 <html>
 <head>
     <meta charset='utf-8' />
@@ -620,15 +655,15 @@ string executiveSummary,
     <div style='max-width:720px; margin:0 auto; padding:18px;'>
 
         <div style='border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:16px;'>
-            <div style='font-size:12px; color:#666;'>China Insights Digest</div>
+   <div style='font-size:12px; color:#666;'>China Insights Digest</div>
        <h2 style='margin:6px 0 0 0; font-weight:700;'>Daily Briefing</h2>
-            <div style='margin-top:6px; font-size:12px; color:#666;'>Generated {nowUtc:yyyy-MM-dd HH:mm} (UTC)</div>
+      <div style='margin-top:6px; font-size:12px; color:#666;'>Generated {nowUtc:yyyy-MM-dd HH:mm} (UTC)</div>
         </div>
 
       <p style='margin:0 0 14px 0;'>Dear {Html(displayName)},</p>
 
     <div style='background:#f6f8fa; padding:12px 14px; border-radius:10px; margin-bottom:16px;'>
-            <div style='display:flex; flex-wrap:wrap; gap:10px; font-size:13px;'>
+      <div style='display:flex; flex-wrap:wrap; gap:10px; font-size:13px;'>
      <div><strong>Focus territories:</strong> {Html(territoryLine)}</div>
  <div><strong>Focus industries:</strong> {Html(industryLine)}</div>
   </div>
@@ -637,35 +672,125 @@ string executiveSummary,
  <h3 style='margin:0 0 8px 0;'>Executive summary</h3>
         <p style='margin:0 0 14px 0;'>{Html(executiveSummary)}</p>
 
-        <h3 style='margin:18px 0 8px 0;'>Key developments</h3>
+   <h3 style='margin:18px 0 8px 0;'>Key developments</h3>
         <ol style='margin:0 0 18px 0; padding-left:20px;'>
  {string.Join("", keyDevelopments.Select(i => $"<li style='margin:0 0 10px 0;'>{Html(i)}</li>"))}
         </ol>
 
      <h3 style='margin:18px 0 8px 0;'>Opportunities & positioning</h3>
-        <ul style='margin:0 0 18px 0; padding-left:20px;'>
-         {string.Join("", opportunities.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
+<ul style='margin:0 0 18px 0; padding-left:20px;'>
+   {string.Join("", opportunities.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
         </ul>
 
-        <h3 style='margin:18px 0 8px 0;'>Watch-outs</h3>
-        <ul style='margin:0 0 18px 0; padding-left:20px; color:#333;'>
-            {string.Join("", watchouts.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
+    <h3 style='margin:18px 0 8px 0;'>Watch-outs</h3>
+      <ul style='margin:0 0 18px 0; padding-left:20px; color:#333;'>
+  {string.Join("", watchouts.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
         </ul>
 
-      <h3 style='margin:18px 0 8px 0;'>Recommended actions (next 7 days)</h3>
+  <h3 style='margin:18px 0 8px 0;'>Recommended actions (next 7 days)</h3>
       <ul style='margin:0 0 18px 0; padding-left:20px;'>
-            {string.Join("", recommendedActions.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
+   {string.Join("", recommendedActions.Select(i => $"<li style='margin:0 0 9px 0;'>{Html(i)}</li>"))}
         </ul>
 
         <div style='margin-top:18px; padding:12px 14px; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px;'>
-            <div style='font-size:12px; color:#7c2d12;'><strong>Note:</strong> This briefing has been customized based on your edits and preferences for {Html(territoryLine)} and {Html(industryLine)}.</div>
-        </div>
+  <div style='font-size:12px; color:#7c2d12;'><strong>Note:</strong> This briefing has been customized based on your edits and preferences for {Html(territoryLine)} and {Html(industryLine)}.</div>
+  </div>
 
-    <hr style='border:none; border-top:1px solid #eee; margin:22px 0;' />
+  <hr style='border:none; border-top:1px solid #eee; margin:22px 0;' />
         <p style='color:#666; font-size:12px; margin:0;'>You are receiving this because you set preferences in the Consultant Advice page.</p>
     </div>
 </body>
 </html>";
       }
+
+ /// <summary>
+ /// Builds email HTML from consultant-edited insights content with source references.
+ /// </summary>
+ public static string BuildEditedEmailHtmlWithSources(
+  string? name,
+  List<string> territories,
+  List<string> industries,
+  string executiveSummary,
+  List<InsightItem> keyDevelopments,
+  List<InsightItem> opportunities,
+  List<InsightItem> watchouts,
+  List<InsightItem> recommendedActions,
+  DateTimeOffset nowUtc)
+ {
+ var displayName = string.IsNullOrWhiteSpace(name) ? "Consultant" : name;
+ var territoryLine = string.Join(", ", territories.Any() ? territories : new List<string> { "China (national)" });
+ var industryLine = string.Join(", ", industries.Any() ? industries : new List<string> { "Cross-sector" });
+
+ return $@"<!DOCTYPE html>
+<html>
+<head>
+ <meta charset='utf-8' />
+ <meta name='viewport' content='width=device-width, initial-scale=1' />
+ <style>
+  .source-link {{ color: #0066cc; font-size: 11px; text-decoration: none; }}
+  .source-link:hover {{ text-decoration: underline; }}
+  .source-citation {{ font-size: 11px; color: #666; margin-top: 4px; font-style: italic; }}
+ </style>
+</head>
+<body style='font-family: Arial, sans-serif; color:#222; line-height:1.55; background:#ffffff;'>
+ <div style='max-width:720px; margin:0 auto; padding:18px;'>
+
+ <div style='border-bottom:1px solid #eee; padding-bottom:12px; margin-bottom:16px;'>
+ <div style='font-size:12px; color:#666;'>China Insights Digest</div>
+ <h2 style='margin:6px 0 0 0; font-weight:700;'>Daily Briefing</h2>
+ <div style='margin-top:6px; font-size:12px; color:#666;'>Generated {nowUtc:yyyy-MM-dd HH:mm} (UTC)</div>
+ </div>
+
+ <p style='margin:0 0 14px 0;'>Dear {Html(displayName)},</p>
+
+ <div style='background:#f6f8fa; padding:12px 14px; border-radius:10px; margin-bottom:16px;'>
+ <div style='display:flex; flex-wrap:wrap; gap:10px; font-size:13px;'>
+ <div><strong>Focus territories:</strong> {Html(territoryLine)}</div>
+ <div><strong>Focus industries:</strong> {Html(industryLine)}</div>
+ </div>
+ </div>
+
+ <h3 style='margin:0 0 8px 0;'>Executive summary</h3>
+ <p style='margin:0 0 14px 0;'>{Html(executiveSummary)}</p>
+
+ <h3 style='margin:18px 0 8px 0;'>Key developments</h3>
+ <ol style='margin:0 0 18px 0; padding-left:20px;'>
+ {string.Join("", keyDevelopments.Select(i => BuildInsightItemHtml(i)))}
+ </ol>
+
+ <h3 style='margin:18px 0 8px 0;'>Opportunities & positioning</h3>
+ <ul style='margin:0 0 18px 0; padding-left:20px;'>
+ {string.Join("", opportunities.Select(i => BuildInsightItemHtml(i)))}
+ </ul>
+
+ <h3 style='margin:18px 0 8px 0;'>Watch-outs</h3>
+ <ul style='margin:0 0 18px 0; padding-left:20px; color:#333;'>
+ {string.Join("", watchouts.Select(i => BuildInsightItemHtml(i)))}
+ </ul>
+
+ <h3 style='margin:18px 0 8px 0;'>Recommended actions (next 7 days)</h3>
+ <ul style='margin:0 0 18px 0; padding-left:20px;'>
+ {string.Join("", recommendedActions.Select(i => BuildInsightItemHtml(i)))}
+ </ul>
+
+ <div style='margin-top:18px; padding:12px 14px; background:#fff7ed; border:1px solid #fed7aa; border-radius:10px;'>
+ <div style='font-size:12px; color:#7c2d12;'><strong>Note:</strong> This briefing has been customized based on your edits and preferences for {Html(territoryLine)} and {Html(industryLine)}. Sources are provided for reference and verification.</div>
+ </div>
+
+ <hr style='border:none; border-top:1px solid #eee; margin:22px 0;' />
+ <p style='color:#666; font-size:12px; margin:0;'>You are receiving this because you set preferences in the Consultant Advice page.</p>
+ </div>
+</body>
+</html>";
+ }
+
+ private static string Html(string value) => System.Net.WebUtility.HtmlEncode(value);
+
+ private static string BuildHeadline(string category, string territory, string industry)
+ {
+ var t = string.IsNullOrWhiteSpace(territory) ? "China" : territory;
+ var i = string.IsNullOrWhiteSpace(industry) ? "industry" : industry;
+ return $"{category}: {t} ¡ª {i} implementation signals";
+ }
     }
 }

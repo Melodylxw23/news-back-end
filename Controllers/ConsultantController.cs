@@ -190,8 +190,6 @@ namespace News_Back_end.Controllers
  var nowUtc = DateTimeOffset.UtcNow;
  var (subject, html, generatedAt) = await _insights.BuildPreviewAsync(userId, nowUtc, HttpContext.RequestAborted);
 
- // Extract content from HTML for editing (simplified - you'll need a parser for production)
- // For now, return the AI-generated insights directly
  var pref = await _db.ConsultantPreferences
  .Include(p => p.ConsultantUser)
  .FirstOrDefaultAsync(p => p.ConsultantUserId == userId, HttpContext.RequestAborted);
@@ -202,7 +200,7 @@ namespace News_Back_end.Controllers
  var territories = DeserializeList(pref.TerritoriesJson);
  var industries = DeserializeList(pref.IndustriesJson);
 
- // Generate AI response to get editable fields
+ // Generate AI response to get editable fields with sources
  ConsultantInsightsAiResponse? aiResponse = null;
  try
  {
@@ -222,10 +220,10 @@ namespace News_Back_end.Controllers
  EditableContent = new EditableConsultantInsightsDTO
  {
  ExecutiveSummary = aiResponse?.ExecutiveSummary ?? string.Empty,
- KeyDevelopments = aiResponse?.KeyDevelopments ?? new(),
- Opportunities = aiResponse?.Opportunities ?? new(),
- Watchouts = aiResponse?.Watchouts ?? new(),
- RecommendedActions = aiResponse?.RecommendedActions ?? new()
+ KeyDevelopments = aiResponse?.KeyDevelopmentsWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new(),
+ Opportunities = aiResponse?.OpportunitiesWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new(),
+ Watchouts = aiResponse?.WatchoutsWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new(),
+ RecommendedActions = aiResponse?.RecommendedActionsWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new()
  },
  GeneratedAtUtc = generatedAt,
  IsEdited = false
@@ -239,6 +237,7 @@ namespace News_Back_end.Controllers
 
  /// <summary>
  /// Get editable insights content from AI (separate endpoint).
+ /// Returns insights with source references for each item.
  /// </summary>
  [HttpGet("insights/generate-editable")]
  public async Task<ActionResult<EditableConsultantInsightsDTO>> GenerateEditableInsights()
@@ -283,13 +282,14 @@ namespace News_Back_end.Controllers
  return StatusCode(500, new { message = "Failed to generate insights: " + ex.Message });
  }
 
+ // Return the full structured response with sources
  return Ok(new EditableConsultantInsightsDTO
  {
  ExecutiveSummary = aiResponse?.ExecutiveSummary ?? string.Empty,
- KeyDevelopments = aiResponse?.KeyDevelopments ?? new(),
- Opportunities = aiResponse?.Opportunities ?? new(),
- Watchouts = aiResponse?.Watchouts ?? new(),
- RecommendedActions = aiResponse?.RecommendedActions ?? new()
+ KeyDevelopments = aiResponse?.KeyDevelopmentsWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new(),
+ Opportunities = aiResponse?.OpportunitiesWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new(),
+ Watchouts = aiResponse?.WatchoutsWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new(),
+ RecommendedActions = aiResponse?.RecommendedActionsWithSources?.Select(InsightItemDTO.FromInsightItem).ToList() ?? new()
  });
  }
  catch (Exception ex)
@@ -345,16 +345,49 @@ namespace News_Back_end.Controllers
  ? $"China Insights (Weekly) - {nowUtc:yyyy-MM-dd}"
  : $"China Insights (Daily) - {nowUtc:yyyy-MM-dd}";
 
- // Build HTML from edited content
- var html = ConsultantInsightsEmailService.BuildEditedEmailHtml(
+ // Convert InsightItemDTOs to InsightItems for email rendering
+ var keyDevelopmentsWithSources = request.KeyDevelopments?.Select(dto => new InsightItem
+ {
+ Text = dto.Text,
+ SourceName = dto.SourceName,
+ SourceUrl = dto.SourceUrl,
+ SourceDate = dto.SourceDate
+ }).ToList() ?? new();
+
+ var opportunitiesWithSources = request.Opportunities?.Select(dto => new InsightItem
+ {
+ Text = dto.Text,
+ SourceName = dto.SourceName,
+ SourceUrl = dto.SourceUrl,
+ SourceDate = dto.SourceDate
+ }).ToList() ?? new();
+
+ var watchoutsWithSources = request.Watchouts?.Select(dto => new InsightItem
+ {
+ Text = dto.Text,
+ SourceName = dto.SourceName,
+ SourceUrl = dto.SourceUrl,
+ SourceDate = dto.SourceDate
+ }).ToList() ?? new();
+
+ var recommendedActionsWithSources = request.RecommendedActions?.Select(dto => new InsightItem
+ {
+ Text = dto.Text,
+ SourceName = dto.SourceName,
+ SourceUrl = dto.SourceUrl,
+ SourceDate = dto.SourceDate
+ }).ToList() ?? new();
+
+ // Build HTML from edited content with sources
+ var html = ConsultantInsightsEmailService.BuildEditedEmailHtmlWithSources(
  pref.ConsultantUser.Name,
  territories,
  industries,
  request.ExecutiveSummary,
- request.KeyDevelopments,
- request.Opportunities,
- request.Watchouts,
- request.RecommendedActions,
+ keyDevelopmentsWithSources,
+ opportunitiesWithSources,
+ watchoutsWithSources,
+ recommendedActionsWithSources,
  nowUtc);
 
  var attemptedAt = DateTimeOffset.UtcNow;

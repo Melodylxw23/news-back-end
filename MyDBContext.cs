@@ -112,6 +112,13 @@ namespace News_Back_end
                 .HasConversion<string>()
                 .HasColumnType("nvarchar(50)");
 
+            modelBuilder.Entity<BroadcastMessage>()
+                .Property(b => b.Language)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(50)");
+
+            // Note: TargetAudience is a [Flags] enum, keep as int for bitwise operations
+
             // PublicationDraft: single IndustryTag FK relation
             modelBuilder.Entity<PublicationDraft>()
                 .HasOne(p => p.IndustryTag)
@@ -237,11 +244,11 @@ namespace News_Back_end
                 .HasColumnType("nvarchar(20)");
 
             modelBuilder.Entity<ConsultantPreference>()
-    .Property(p => p.Language)
-             .HasConversion<string>()
- .HasColumnType("nvarchar(20)");
+                .Property(p => p.Language)
+                .HasConversion<string>()
+                .HasColumnType("nvarchar(20)");
 
-       // ConsultantInsightsSendLog relationship + uniqueness (ConsultantUserId, Period, PeriodDateUtc)
+            // ConsultantInsightsSendLog relationship + uniqueness (ConsultantUserId, Period, PeriodDateUtc)
             modelBuilder.Entity<ConsultantInsightsSendLog>()
                 .HasOne(l => l.ConsultantUser)
                 .WithMany()
